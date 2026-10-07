@@ -1,0 +1,34 @@
+# ==========================================
+# Maven / Build Output (Applies to all folders)
+# ==========================================
+**/target/
+*.jar
+*.war
+*.ear
+
+# ==========================================
+# VS Code Configuration & Caches
+# ==========================================
+.vscode/
+.history/
+*.code-workspace
+
+# ==========================================
+# Java / IDE Caches (In case contributors use them)
+# ==========================================
+# Eclipse
+.metadata/
+.classpath
+.project
+.settings/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+
+# ==========================================
+# System / OS Files
+# ==========================================
+**/.DS_Store
+Thumbs.db
