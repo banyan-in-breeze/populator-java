@@ -111,7 +111,7 @@ With Populator approach, you do the following:
 List<Team> findTeamsBySomeCriteria(/* ... some criteria */)  { ... }
 
 // SQL: SELECT member.id, member.name FROM member WHERE team_id IN (:teamIds)
-List<Member> findMembersByTeamIds(Collection<String> teamIds)  { ... }
+List<Member> findMembersByTeamIds(Collection<Integer> teamIds)  { ... }
 
 List<Team> findTeamsWithMembersPopulated(/* ... some criteria */) {
     // Use Populator to fetch members and stitich teams with members
