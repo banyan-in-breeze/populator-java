@@ -4,7 +4,7 @@
 
 It has zero third-party dependencies, lets you replace complex database table joins with fast, efficient batch lookups, and completely avoids the N+1 query issue.
 
-Beyond a simple helper, Populator can serve as a system-wide data assembly strategy that makes your code clean, reusable, and scalable.
+Beyond a simple helper, Populator can serve as an application-wide data assembly strategy that makes your code clean, reusable, and scalable.
 
 The utility is extremely lightweight, containing about **250 lines of executable code** in `Populator.java` and about **90 lines of executable code** in `BatchFinder.java` (excluding comments and blank lines).
 
@@ -23,12 +23,13 @@ The utility is extremely lightweight, containing about **250 lines of executable
   * [Safe Query Batching with BatchFinder](#safe-query-batching-with-batchfinder)
   * [Immutable, Mutable, and Semi-mutable Model Classes](#immutable-mutable-and-semi-mutable-model-classes)
   * [Small Type Hinting, Big Help](#small-type-hinting-big-help)
+  * [Data Consistency with Transaction](#data-consistency-with-transaction)
 * [Performance Analysis](#performance-analysis)
   * [Compare with Examples](#compare-with-examples)
   * [Understanding the Trade-offs](#understanding-the-trade-offs)
   * [Other Performance Factors](#other-performance-factors)
   * [Conclusion on Performance](#conclusion-on-performance)
-* [Use Populator as a System-Wide Strategy](#use-populator-as-a-system-wide-strategy)
+* [Use Populator as an Application-Wide Strategy](#use-populator-as-an-application-wide-strategy)
   * [1. Create Reusable Building Blocks in the Repository Layer](#1-create-reusable-building-blocks-in-the-repository-layer)
   * [2. Assemble Data Models in the Service Layer](#2-assemble-data-models-in-the-service-layer)
   * [3. Convert Models to DTOs in the End](#3-convert-models-to-dtos-in-the-end)
@@ -46,17 +47,16 @@ Data frameworks work well for basic database operations, but they can struggle w
 ### Problems it solves:
 * **The Join Explosion and Mapping Difficulty:** Joining multiple one-to-many tables in a single SQL query duplicates data across the network and slows down your database. It also makes mapping those flat query results back into nested object structures complex.
 * **The N+1 Query Trap:** Fetching child records inside a loop creates too many individual database or API requests.
-* **Hybrid Data Sources:** Traditional frameworks assume all your data lives in databases reachable in one query. They cannot easily connect a database entity to a child object that comes from an isolated remote REST or gRPC API.
+* **Hybrid Data Sources:** Traditional frameworks assume all your data lives in databases reachable in one query. They cannot easily connect a database entity to a child object that comes from a remote REST or gRPC API.
 
 ### How Populator helps:
-* **Problem Solver:** Use `Populator` alongside your existing data layer (like Spring Data JPA, JDBC, jOOQ, or MyBatis) to solve problems of complex data mapping. Instead of executing one massive SQL join, you write small batch queries (like `SELECT ... WHERE ID IN (?, ?, ?, ...)`). Your framework handles the row-to-object mapping, and `Populator` coordinates the execution to stitch the data together.
-* **System-Wide Solution:** Beyond a simple helper, `Populator` can serve as a core data assembly strategy. You can reuse independent data finders and mapping parameters to satisfy various client requirements cleanly, which drastically reduces the need for massive, complex SQL queries.
-* **Mix Data Sources:** You can combine database rows and remote API responses inside a single, fluent method chain. Traditional data frameworks cannot natively bridge relational databases and remote network endpoints during relationship assembly.
-* **Virtually Zero Learning Curve:** It introduces no new expression languages or proprietary annotations. If you know how to use standard Java functional interfaces and method references, you already know how to use Populator.
-* **Low Cognitive Load** Instead of wrestling with massive SQLs and data mappings for complex object structure, you only write simple, small, and reusable building blocks, then use Populator to stitch them together. Furthermore, the building blocks you write in earlier sprints are directly usable in later sprints, reducing your overall development work.
-* **Memory Efficient:** It supports immutable Java `record` types, standard POJOs, and mutable objects. For high-throughput systems, using mutable or semi-mutable classes (immutable core fields with mutable child references) prevents heavy object copying and memory churn.
-* **Performance for High Standards:** Compared to large, complex table joins, the Populator approach fetches data without any duplication, reducing network payload and memory usage, which often offsets the delay caused by making more network roundtrips.
-* **No Dependencies:** It is written in pure Java. It does not require Spring, Lombok, or any other external library.
+* **Solving Complex Data Mapping:** Use `Populator` alongside existing data layers (JPA, JDBC, jOOQ, MyBatis) to handle complex mapping challenges.
+* **Application-Wide Solution:** Serves as a core data assembly strategy for clean, reusable, and scalable code.
+* **Mix Data Sources:** Combine database rows and remote API responses in a single, fluent method chain.
+* **Virtually Zero Learning Curve:** Only a handful of functions and classes from a 340-line codebase to learn.
+* **Low Cognitive Load:** Replaces massive SQL queries and complex data mapping logic with small building blocks and simple function calls.
+* **Performance for High Standards:** Fetches data without duplication compared to large table joins, reducing network and memory overhead.
+* **No Dependencies:** Pure Java implementation requiring no external libraries.
 
 ---
 
@@ -160,12 +160,10 @@ Team
   ├── (one) Manager
   └── (many) Members
         ├── (one) Title
-        └── (many) ContactMethods
+        └── (many) ContactMethods (from remote API call)
 ```
 
-With traditional frameworks, building structures like this requires massive SQL joins and complex manual coding to mix database rows with remote API data. If Manager and Title were "many" relationships too, the manual code would turn into a nightmare.
-
-With Populator, everything is done smoothly in a single, unified method chain, no matter how complex the structure gets.
+With Populator, the multi-level, multi-sibling structure can be built easily:
 
 ```java
 // Add model classes Manager, Title, and ContactMethod
@@ -361,7 +359,7 @@ List<Team> findTeamsWithEverythingPopulatedParallel(/* ... some criteria */) {
 Alternatively, you can call `.runWithMode(boolean parallel)` to pass a boolean flag that switches between sequential and parallel processing dynamically.
 
 #### How It Works under the Hood
-When you execute `runParallel()`, Populator invokes all data finder functions at that specific level concurrently using an internal thread pool. Once all threads finish retrieving the child datasets, Populator switches back to sequential execution to stitch the child objects into their parents one parameter at a time. This structural design ensures that immutable records or copy-on-write classes can safely accumulate all child siblings without race conditions or data loss.
+When you execute `runParallel()`, Populator calls all data finder functions at that specific level concurrently using an internal thread pool. Once all threads finish retrieving the child datasets, Populator switches back to sequential execution to stitch the child objects into their parents one parameter at a time. This design ensures that immutable records or copy-on-write classes can safely set all child objects in parent objects without losing any of them.
 
 #### Using a Virtual Thread Pool with Java 21+
 
@@ -383,7 +381,7 @@ If you don't change the default thread pool, you don't need to worry about threa
 
 ### Safe Query Batching with BatchFinder
 
-When using `Populator`, your system will rely heavily on batch lookup methods (like `findMembersByIds(Collection<String> ids)`). However, passing large or unpredictable numbers of IDs directly to a database can cause two major problems:
+When using `Populator`, your application will rely heavily on batch lookup methods (like `findMembersByIds(Collection<Integer> ids)`). However, passing large or unpredictable numbers of IDs directly to a database can cause two major problems:
 1. **Parameter Limits:** Many databases fail if an `IN` clause exceeds maximum parameter limits (e.g., Oracle's 1,000-item limit).
 2. **Cache Bloat:** Passing a varying number of IDs (like anywhere between 1 to 1000) forces the database to re-compile execution plans for each variation, bloating the prepared statement cache.
 
@@ -494,6 +492,66 @@ While type arguments are not required by the compiler here, adding them helps yo
 
 Without the type arguments, if you make a typo (such as writing `Team::getid` instead of `Team::getId`), the IDE gets confused and underlines the *entire method call* in red, and you wonder where the actual error is. Once you add the type arguments explicitly, your IDE can point directly to the typo. If you want to keep your code clean, you can delete the type arguments after the block is finished.
 
+### Data Consistency with Transaction
+
+Normally, you don't need to stress about strict data consistency when making separate queries to fetch your data. It's the same story with `Populator`: each chained `populate()` call runs as an independent query, so leaving them out of a transaction is usually fine.
+
+However, if you do need to wrap your populator chain in a transaction, keep these two rules in mind:
+
+1. **Stick to `run()` instead of `runParallel()`.** Parallel threads won't play nice with your database transaction. Even worse, holding an open transaction connection while trying to borrow more connections in separate threads can starve your connection pool.
+2. **Never mix remote API calls with a database transaction.** If a third-party API slows down, it will hang onto your database connection for way too long, tanking your app's performance.
+
+If you must combine data from a remote API with transactional database data, you have to separate the calls. Here is how:
+
+1. Populate top-level data with remote API data
+```java
+// Open the database transaction using Spring's TransactionTemplate
+List<Member> members = transactionTemplate.execute(status -> {
+    List<Member> localMembers = findMembersBySomeCriteria(...);
+    
+    return Populator.of(localMembers)
+        .populate(paramsMemberWithTitle()) 
+        .run();
+});
+
+// Populate with remote API data outside the transaction
+members = Populator.of(members)
+        .populate(paramsMemberWithContactMethods())
+        .run();
+```
+
+2. Populate nested sub-level data with remote API data:
+*(Note: This pattern assumes that `Member`'s `setContactMethods()` is a mutable setter that returns the same `Member` object).*
+
+```java
+AtomicReference<List<Member>> atomicMembers = new AtomicReference<>();
+
+// Open the database transaction
+List<Team> teams = transactionTemplate.execute(status -> {
+    List<Team> localTeams = findTeamsBySomeCriteria(...);
+    
+    return Populator.of(localTeams)
+        .populate(paramsTeamWithManager())
+        .populate(paramsTeamWithMembers(members -> {
+            List<Member> populatedMembers = Populator.of(members)
+                .populate(paramsMemberWithTitle())
+                .run();
+                
+            // Cache the reference to process later
+            atomicMembers.set(populatedMembers); 
+            return populatedMembers;
+        }))
+        .run();
+});
+
+// Populate with remote API data outside the transaction
+if (atomicMembers.get() != null) {
+    Populator.of(atomicMembers.get())
+        .populate(paramsMemberWithContactMethods())
+        .run();
+}
+```
+
 ---
 
 ## Performance Analysis
@@ -538,19 +596,21 @@ This means:
 
 The above analysis is only a general, rough idea regarding the most important factors. The real world is more complex; SQL query shapes, database indexes, connection pools, and many other factors also matter. So the analysis does not cover every single scenario.
 
-But in general, for more complex structures and larger datasets, the Populator approach can deliver higher performance than the single-query approach. For simpler structures and smaller datasets, the single-query approach may be faster by a very narrow margin.
+But in general, for a typical production envrionment that has low network latency betwee app server and database server:
+* For more complex structures and larger datasets, the Populator approach can deliver higher performance than the single-query approach.
+* For simpler structures and smaller datasets, the single-query approach may be faster by a very narrow margin.
 
-Therefore, performance-wise, it is safe to choose the Populator approach as your main and consistent system-wide strategy.
+Therefore, performance-wise, it is safe to choose the Populator approach as your main and consistent application-wide strategy.
 
 ---
 
-## Use Populator as a System-Wide Strategy
+## Use Populator as an Application-Wide Strategy
 
-You can use `Populator` in your systems in two ways.
+You can use `Populator` in your applications in two ways.
 
 The first is to use it as a simple utility whenever you need to handle one-to-many associations or assemble data from different data sources (such as local databases and remote APIs). 
 
-The second way is to use it as a core architectural pattern to help create a highly scalable, maintainable, and performant system. To achieve this, you follow three clean steps:
+The second way is to use it as a core architectural pattern to help create a highly scalable, maintainable, and high-performance application. To achieve this, you follow three clean steps:
 1. Create reusable building blocks in your **Repository Layer**.
 2. Use `Populator` to assemble them as needed in your **Service Layer**.
 3. Convert the assembled object structure into specific DTOs in the very end.
@@ -615,7 +675,7 @@ While you can organize your packages only by layer or only by feature, a hybrid 
 
 ### Explore the Bookstore Demo
 
-To see how this architecture works, check the `bookstore` demo in this repository. This ready-to-run project shows how using Populator with small, reusable building blocks turns rather complex requirements into a clean system.
+To see how this architecture works, check the `bookstore` demo in this repository. This ready-to-run project shows how using Populator with small, reusable building blocks turns rather complex requirements into a clean codebase.
 
 ---
 
@@ -633,8 +693,8 @@ The "simple" demo demonstrates the following:
 * Supporting legacy database tables with composite IDs
 * Usage of BatchFinder
 
-The "bookstore" demo implements a simplified, simulated book navigation system for an online bookstore. It uses a standard three-tier architecture: repository, service, and an interactive command-line UI representing the controller and client. It demonstrates the following:
-* Using Populator as a system-wide strategy
+The "bookstore" demo implements simplified, simulated book navigation functionality for an online bookstore. It uses a standard three-tier architecture: repository, service, and an interactive command-line UI representing the controller and client. It demonstrates the following:
+* Using Populator as an application-wide strategy
 * Eliminating complexity by building small, reusable building blocks
 * Integrating external API calls seamlessly with database access functions
 
