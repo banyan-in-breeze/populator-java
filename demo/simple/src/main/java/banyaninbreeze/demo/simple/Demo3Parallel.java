@@ -2,6 +2,8 @@ package banyaninbreeze.demo.simple;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import banyaninbreeze.populator.Populator;
 import banyaninbreeze.populator.Populator.ChildModifier;
@@ -23,50 +25,136 @@ public class Demo3Parallel {
 
         var demo = new Demo3Parallel();
         demo.showcaseCompare();
+        demo.showcaseCustomExecutorAndMode();
 
-        Populator.getGlobalExecutor().shutdown(); // prevent the threads from holding up the app
+        // Shutdown executor service to prevent the threads from holding up the app
+        Populator.getGlobalExecutor().shutdown();
+
+        demo.showcaseForceSequential();
     }
 
     /******************************************************************************************
      * Showcase: Compare performance of sequential versus parallel data population
-     * - 20~50 ms delay is added to each "find" method to simulate real database access.
+     * - 30~50 ms delay is added to each "find" method to simulate real database access.
      * - Builds the same object structure twice: once sequential and once in parallel.
      * - Prints the elapsed time to compare performance.
      ******************************************************************************************/
     public void showcaseCompare() {
+        long startTime;
+        List<Team> teams;
+
+        // Call this function once to "warm-up" JVM with classloading and so on
+        testSequential();
 
         // Sequential
-        long startTime = System.currentTimeMillis();
-
-        List<Team> teams1 = findAllTeams();
-        teams1 = Populator.of(teams1)
-                .populate(paramsTeamWithManager())
-                .populate(paramsTeamWithMemebers(
-                    members -> Populator.of(members)
-                        .populate(paramsMemberWithTitle())
-                        .populate(paramsMemberWithContactMethods())
-                        .run()
-                ))
-                .run();
-
-        System.out.println("Sequential: time elapsed " + (System.currentTimeMillis() - startTime) + " ms");
+        startTime = System.currentTimeMillis();
+        teams = testSequential();
+        System.out.println("Sequential - time elapsed: " + (System.currentTimeMillis() - startTime) + " ms");
+        printResult(teams);
         
         // Parallel
         startTime = System.currentTimeMillis();
+        teams = testParallel();
+        System.out.println("Parallel - time elapsed: " + (System.currentTimeMillis() - startTime) + " ms");
+        printResult(teams);
+    }
 
-        List<Team> teams2 = findAllTeams();
-        teams2 = Populator.of(teams2)
+    /******************************************************************************************
+     * Showcase: Use specific executor on individual populators, run with dynamic mode
+     *****************************************************************************************/
+    public void showcaseCustomExecutorAndMode() {
+        long startTime;
+        List<Team> teams;
+
+        ExecutorService executor = Executors.newFixedThreadPool(4);
+
+        // Sequential mode (will ignore the provided executor)
+        startTime = System.currentTimeMillis();
+        teams = testCustom(executor, false);
+        System.out.println("Sequential mode - time elapsed: " + (System.currentTimeMillis() - startTime) + " ms");
+        printResult(teams);
+
+        // Parallel mode with a specific executor
+        startTime = System.currentTimeMillis();
+        teams = testCustom(executor, true);
+        System.out.println("Parallel mode - time elapsed: " + (System.currentTimeMillis() - startTime) + " ms");
+        printResult(teams);
+
+        executor.shutdown();
+    }
+
+    /******************************************************************************************
+     * Showcase: Force all population to be sequential.
+     * In case of testing, debugging or limited resources (like CPU), we may want to force all
+     * runParallel() to be sequential in an app. Change Populator's global executor service to
+     * SameThreadExecutorService, then all runParallel() or runWithMode(true) will sequentially
+     * run population on the current thread just like run().
+     *****************************************************************************************/
+    public void showcaseForceSequential() {
+        long startTime;
+        List<Team> teams;
+
+        // Replace the global executor so that all runParallel() become sequential
+        Populator.setGlobalExecutor(new SameThreadExecutorService());
+
+        // Parallel with "same thread executor"
+        startTime = System.currentTimeMillis();
+        teams = testParallel();
+        System.out.println("Parallel with same thread executor - time elapsed: "
+                         + (System.currentTimeMillis() - startTime) + " ms");
+        printResult(teams);
+    }
+
+    private List<Team> testSequential() {
+        List<Team> teams = findAllTeams();
+        return Populator.of(teams)
                 .populate(paramsTeamWithManager())
                 .populate(paramsTeamWithMemebers(
                     members -> Populator.of(members)
                         .populate(paramsMemberWithTitle())
                         .populate(paramsMemberWithContactMethods())
-                        .runParallel() // <-- parallel, alternatively you can call .runWithMode(true)
+                        .run() // <-- run sequentially, alternatively call runWithMode(false)
                 ))
-                .runParallel(); // <-- parallel, alternatively you can call .runWithMode(true)
-
-        System.out.println("Parallel: time elapsed " + (System.currentTimeMillis() - startTime) + " ms");
+                .run(); // <-- run sequentially, alternatively call runWithMode(false)
     }
+
+    private List<Team> testParallel() {
+        List<Team> teams = findAllTeams();
+        return Populator.of(teams)
+                .populate(paramsTeamWithManager())
+                .populate(paramsTeamWithMemebers(
+                    members -> Populator.of(members)
+                        .populate(paramsMemberWithTitle())
+                        .populate(paramsMemberWithContactMethods())
+                        .runParallel() // <-- run in parallel, alternatively call runWithMode(true)
+                ))
+                .runParallel(); // <-- run in parallel, alternatively call runWithMode(true)
+    }
+
+    private List<Team> testCustom(ExecutorService customExecutor, boolean parallelMode) {
+        List<Team> teams = findAllTeams();
+        return Populator.of(customExecutor, teams) // Use custom executor
+                .populate(paramsTeamWithManager())
+                .populate(paramsTeamWithMemebers(
+                    members -> Populator.of(customExecutor, members) // Use custom executor
+                        .populate(paramsMemberWithTitle())
+                        .populate(paramsMemberWithContactMethods())
+                        .runWithMode(parallelMode) // <-- run with required mode, either sequential or parallel
+                ))
+                .runWithMode(parallelMode); // <-- run with required mode, either sequential or parallel
+    }
+
+    /****************
+     * Print Result
+     ***************/
+    private void printResult(List<Team> teams) {
+        System.out.println(teams.size() + " teams loaded and populated.");
+        System.out.println();
+    }
+
+    /***********************************
+     * PopulateParams creator functions
+     **********************************/
 
     // Creates PopulateParams to populate teams with manager
     private PopulateParams<Team, Manager, Integer> paramsTeamWithManager() {
@@ -145,7 +233,7 @@ public class Demo3Parallel {
     }
 
     private List<Title> findTitlesByIds(Collection<Integer> ids) {
-        delay(20);
+        delay(30);
         return TITLE_SAMPLES.stream()
                 .filter(map -> ids.contains((Integer) map.get("id")))
                 .map(map -> new Title((Integer) map.get("id"), (String) map.get("title")))
