@@ -370,7 +370,7 @@ If your project uses Java 21 or higher, it is highly recommended to switch to a 
 Add the following code as part of your project's startup code:
 
 ```java
-Populator.setGlobalExecutor(Executors.newVirtualThreadPerTaskExecutor());
+Populator.setGlobalExecutorService(Executors.newVirtualThreadPerTaskExecutor());
 ```
 
 #### Thread-Starvation Deadlock Prevention

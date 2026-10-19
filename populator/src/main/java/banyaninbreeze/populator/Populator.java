@@ -25,39 +25,39 @@ import java.util.stream.Collectors;
  * @param <P> The Parent model type being populated.
  */
 public class Populator<P> {
-    private static volatile ExecutorService globalExecutor = Executors.newCachedThreadPool();
+    private static volatile ExecutorService globalExecutorService = Executors.newCachedThreadPool();
     
-    private final ExecutorService executor;
+    private final ExecutorService executorService;
     private Collection<P> parents;
     private List<PopulateParams<P, ?, ?>> paramsList;
     
-    private Populator(ExecutorService executor, Collection<P> parents) {
+    private Populator(ExecutorService executorService, Collection<P> parents) {
         this.parents = parents;
         this.paramsList = new ArrayList<>();
-        this.executor = executor;
+        this.executorService = executorService;
     }
 
     /**
      * Updates the global executor service used by all Populator instances by default.
      * Use this at application startup to configure custom thread pools or upgrade to virtual threads.
      *
-     * @param executor The non-null custom ExecutorService to use globally.
-     * @throws IllegalArgumentException if the provided executor is null.
+     * @param executorService The non-null custom ExecutorService to use globally.
+     * @throws IllegalArgumentException if the provided executor service is null.
      */
-    public static void setGlobalExecutor(ExecutorService executor) {
-        if (executor == null) {
-            throw new IllegalArgumentException("Global executor cannot be null");
+    public static void setGlobalExecutorService(ExecutorService executorService) {
+        if (executorService == null) {
+            throw new IllegalArgumentException("Global executor service cannot be null");
         }
-        Populator.globalExecutor = executor;
+        Populator.globalExecutorService = executorService;
     }
 
     /**
-     * Get the global executor
+     * Get the global executor service
      * 
-     * @return the global executor
+     * @return the global executor service
      */
-    public static ExecutorService getGlobalExecutor() {
-        return Populator.globalExecutor;
+    public static ExecutorService getGlobalExecutorService() {
+        return Populator.globalExecutorService;
     }
 
     /**
@@ -211,7 +211,7 @@ public class Populator<P> {
      * @return A new, chainable Populator instance.
      */
     public static <P> Populator<P> of(Collection<P> parents) {
-        return new Populator<P>(globalExecutor, parents);
+        return new Populator<P>(globalExecutorService, parents);
     }
 
     /**
@@ -219,12 +219,12 @@ public class Populator<P> {
      * Perfect for isolating specific heavy queries or for running single-threaded unit tests.
      *
      * @param <P>      The Parent model type.
-     * @param executor The specific custom ExecutorService to use for this pipeline execution.
+     * @param executorService The specific custom ExecutorService to use for this pipeline execution.
      * @param parents  The collection of parent objects to populate.
      * @return A new, chainable Populator instance.
      */
-    public static <P> Populator<P> of(ExecutorService executor, Collection<P> parents) {
-        return new Populator<P>(executor, parents);
+    public static <P> Populator<P> of(ExecutorService executorService, Collection<P> parents) {
+        return new Populator<P>(executorService, parents);
     }
 
     /**
@@ -339,7 +339,7 @@ public class Populator<P> {
             List<CompletableFuture<Void>> futures = paramsList.stream()
                     .map(params -> CompletableFuture.runAsync(
                             () -> this.findChildren(parents, params),
-                            executor
+                            executorService
                         )
                     )
                     .collect(Collectors.toList());

@@ -3,6 +3,7 @@ package banyaninbreeze.demo.bookstore;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Scanner;
+import java.util.concurrent.Executors;
 
 import banyaninbreeze.demo.bookstore.service.BookstoreDtos.AuthorBooksDto;
 import banyaninbreeze.demo.bookstore.service.BookstoreDtos.AuthorDto;
@@ -17,8 +18,14 @@ import banyaninbreeze.populator.Populator;
 public class Bookstore {
     private static BookstoreService bookService = new BookstoreService();
     static {
-        // Note: if you are running Java 21+, uncomment this line to use virtual threads
-        // Populator.setGlobalExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        // =========================================================================
+        // JAVA VERSION COMPATIBILITY NOTE:
+        // If you are running Java 21+ and want to utilize virtual threads:
+        // 1. In pom.xml, change <maven.compiler.release>17</maven.compiler.release>
+        //    to 21 or higher
+        // 2. Uncomment the line of code below.
+        // =========================================================================
+        // Populator.setGlobalExecutorService(Executors.newVirtualThreadPerTaskExecutor());
     }
 
     public static void main(String[] args) {
@@ -41,7 +48,7 @@ public class Bookstore {
         }
         
         scanner.close();
-        Populator.getGlobalExecutor().shutdown();
+        Populator.getGlobalExecutorService().shutdown();
     }
 
     private static void displayMenu() {

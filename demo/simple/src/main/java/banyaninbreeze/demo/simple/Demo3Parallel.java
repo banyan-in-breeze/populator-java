@@ -20,15 +20,21 @@ import banyaninbreeze.populator.Populator.PopulateParams;
  */
 public class Demo3Parallel {
     public static void main(String[] args) {
-        // Note: if you are running Java 21+, uncomment this line to use virtual threads:
-        // Populator.setGlobalExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        // =========================================================================
+        // JAVA VERSION COMPATIBILITY NOTE:
+        // If you are running Java 21+ and want to utilize virtual threads:
+        // 1. In pom.xml, change <maven.compiler.release>17</maven.compiler.release>
+        //    to 21 or higher
+        // 2. Uncomment the line of code below.
+        // =========================================================================
+        // Populator.setGlobalExecutorService(Executors.newVirtualThreadPerTaskExecutor());
 
         var demo = new Demo3Parallel();
         demo.showcaseCompare();
         demo.showcaseCustomExecutorAndMode();
 
         // Shutdown executor service to prevent the threads from holding up the app
-        Populator.getGlobalExecutor().shutdown();
+        Populator.getGlobalExecutorService().shutdown();
 
         demo.showcaseForceSequential();
     }
@@ -60,47 +66,48 @@ public class Demo3Parallel {
     }
 
     /******************************************************************************************
-     * Showcase: Use specific executor on individual populators, run with dynamic mode
+     * Showcase: Use specific executor service on individual populators, run with dynamic mode
      *****************************************************************************************/
     public void showcaseCustomExecutorAndMode() {
         long startTime;
         List<Team> teams;
 
-        ExecutorService executor = Executors.newFixedThreadPool(4);
+        ExecutorService executorService = Executors.newFixedThreadPool(4);
 
-        // Sequential mode (will ignore the provided executor)
+        // Sequential mode (will ignore the provided executor service)
         startTime = System.currentTimeMillis();
-        teams = testCustom(executor, false);
+        teams = testCustom(executorService, false);
         System.out.println("Sequential mode - time elapsed: " + (System.currentTimeMillis() - startTime) + " ms");
         printResult(teams);
 
-        // Parallel mode with a specific executor
+        // Parallel mode with a specific executor service
         startTime = System.currentTimeMillis();
-        teams = testCustom(executor, true);
+        teams = testCustom(executorService, true);
         System.out.println("Parallel mode - time elapsed: " + (System.currentTimeMillis() - startTime) + " ms");
         printResult(teams);
 
-        executor.shutdown();
+        executorService.shutdown();
     }
 
     /******************************************************************************************
-     * Showcase: Force all population to be sequential.
+     * Showcase: Force all population to be sequential even for runParallel().
      * In case of testing, debugging or limited resources (like CPU), we may want to force all
      * runParallel() to be sequential in an app. Change Populator's global executor service to
      * SameThreadExecutorService, then all runParallel() or runWithMode(true) will sequentially
      * run population on the current thread just like run().
+     * This way you don't need to change runParallel() to run() in your code.
      *****************************************************************************************/
     public void showcaseForceSequential() {
         long startTime;
         List<Team> teams;
 
-        // Replace the global executor so that all runParallel() become sequential
-        Populator.setGlobalExecutor(new SameThreadExecutorService());
+        // Replace the global executor service so that all runParallel() become sequential
+        Populator.setGlobalExecutorService(new SameThreadExecutorService());
 
-        // Parallel with "same thread executor"
+        // Parallel with "same thread executor service"
         startTime = System.currentTimeMillis();
         teams = testParallel();
-        System.out.println("Parallel with same thread executor - time elapsed: "
+        System.out.println("Parallel with same thread executor service - time elapsed: "
                          + (System.currentTimeMillis() - startTime) + " ms");
         printResult(teams);
     }
@@ -131,12 +138,12 @@ public class Demo3Parallel {
                 .runParallel(); // <-- run in parallel, alternatively call runWithMode(true)
     }
 
-    private List<Team> testCustom(ExecutorService customExecutor, boolean parallelMode) {
+    private List<Team> testCustom(ExecutorService customExecutorService, boolean parallelMode) {
         List<Team> teams = findAllTeams();
-        return Populator.of(customExecutor, teams) // Use custom executor
+        return Populator.of(customExecutorService, teams) // Use custom executor service
                 .populate(paramsTeamWithManager())
                 .populate(paramsTeamWithMemebers(
-                    members -> Populator.of(customExecutor, members) // Use custom executor
+                    members -> Populator.of(customExecutorService, members) // Use custom executor service
                         .populate(paramsMemberWithTitle())
                         .populate(paramsMemberWithContactMethods())
                         .runWithMode(parallelMode) // <-- run with required mode, either sequential or parallel
