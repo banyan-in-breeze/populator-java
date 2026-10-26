@@ -1,94 +1,118 @@
 # Populator
 
-**Populator** is a small but powerful Java utility designed to fetch parent and child data using any data layer framework (like Spring JPA, JDBC, jOOQ, or MyBatis) or remote API calls, stitch them together, and build complex object structures of any number of levels.
+**A small but powerful Java util that works with any framework (Spring JPA, JDBC, jOOQ, MyBatis) and/or remote APIs to build complex object structures.**
 
-It has zero third-party dependencies, lets you replace complex database table joins with fast, efficient batch lookups, and completely avoids the N+1 query issue.
+When building Java APIs, we often need to fetch and map data with multiple one-to-many or many-to-one like this:
 
-Beyond a simple helper, Populator can serve as an application-wide data assembly strategy that makes your code clean, reusable, and scalable.
+```text
+Team
+  ├── (one) Manager
+  └── (many) Members
+        ├── (many) ContactMethods
+        └── (many) Assignments
+```
+One level is easy with JPA's `JOIN FETCH` or manual mapping. But this kind of graph is full of traps:
 
-The utility is extremely lightweight, containing about **250 lines of executable code** in `Populator.java` and about **90 lines of executable code** in `BatchFinder.java` (excluding comments and blank lines).
+* N+1 queries
+* Cartesian product explosion
+* Monster SQL statements
+* Messy, hard-to-maintain code
+
+jOOQ handles it decently, but the query can be verbose and the result can contain a lot of duplicate data. And if you already use Spring but want to use jOOQ to handle it, you face the learning curve and the hard decision of choosing which one or both.
+
+On top of that, **what if ContactMethods comes from a remote API, not your DB**? No ORM framework is designed to build a clean object graph from mixed data sources like DB plus remote APIs.
+
+Worse yet, in the next sprint, the customer adds projects and tasks to the structure:
+
+```text
+Team
+  ├── (one) Manager
+  ├── (many) Members
+  │     ├── (many) ContactMethods (from a remote API)
+  │     └── (many) Assignments
+  └── (many) Projects
+        └── (many) Tasks
+```
+
+How do you add it to your already-complex code?
+
+**This is where `Populator` comes into play.** It makes the complex problem simple.
+
+* Stay with your framework — JPA, JDBC, jOOQ, MyBatis, etc.
+* No N+1, no Cartesian product
+* Seamlessly work with REST API, gRPC, etc.
+* Code made simple, clean, reusable, and easy to expand
+* Zero magic, no annotations, no dependencies, plain Java
+* 340 lines, 2 files — **copy-paste straight into your project**
+
+Performance? See a dedicated section below.
+
+More than a problem solver, it can be an **application-wide strategy** that keeps your application code clean, reusable, and scalable.
 
 ## Table of Contents
 
-* [Why Populator?](#why-populator)
-  * [Problems it solves](#problems-it-solves)
-  * [How Populator helps](#how-populator-helps)
-* [Installation](#installation)
-* [Demonstrate Populator with Examples](#demonstrate-populator-with-examples)
-  * [Start with the Simplest Scenario](#start-with-the-simplest-scenario)
-  * [More Complex Scenario - Multi-level, Multi-sibling Structure, Multi-Datasource](#more-complex-scenario---multi-level-multi-sibling-structure-multi-datasource)
-  * [Using PopulateParams for Cleaner and Reusable Code](#using-populateparams-for-cleaner-and-reusable-code)
-  * [Using ChildModifier for Ultimate Reusability](#using-childmodifier-for-ultimate-reusability)
-  * [Populate Siblings in Parallel](#populate-siblings-in-parallel)
-  * [Safe Query Batching with BatchFinder](#safe-query-batching-with-batchfinder)
-  * [Immutable, Mutable, and Semi-mutable Model Classes](#immutable-mutable-and-semi-mutable-model-classes)
-  * [Small Type Hinting, Big Help](#small-type-hinting-big-help)
-  * [Data Consistency with Transaction](#data-consistency-with-transaction)
-* [Performance Analysis](#performance-analysis)
-  * [Compare with Examples](#compare-with-examples)
-  * [Understanding the Trade-offs](#understanding-the-trade-offs)
-  * [Other Performance Factors](#other-performance-factors)
-  * [Conclusion on Performance](#conclusion-on-performance)
-* [Use Populator as an Application-Wide Strategy](#use-populator-as-an-application-wide-strategy)
-  * [1. Create Reusable Building Blocks in the Repository Layer](#1-create-reusable-building-blocks-in-the-repository-layer)
-  * [2. Assemble Data Models in the Service Layer](#2-assemble-data-models-in-the-service-layer)
-  * [3. Convert Models to DTOs in the End](#3-convert-models-to-dtos-in-the-end)
-  * [Package Structure](#package-structure)
-  * [Explore the Bookstore Demo](#explore-the-bookstore-demo)
-* [Explore the Demos for More Details](#explore-the-demos-for-more-details)
-* [Contributing, Issues & License](#contributing-issues--license)
+- [Getting Started](#getting-started)
+- [Introduce Populator](#introduce-populator)
+- [Build More Complex Object Structures](#build-more-complex-object-structures)
+    - [Two or More Siblings (Horizontal Population)](#two-or-more-siblings-horizontal-population)
+    - [Two or More Nested Levels (Vertical Population)](#two-or-more-nested-levels-vertical-population)
+    - [More Complex Population](#more-complex-population)
+- [`PopulateParams` and `ChildModifier`: Cleaner and Reusable Code](#populateparams-and-childmodifier-cleaner-and-reusable-code)
+    - [Use `PopulateParams` to Bundle Parameters](#use-populateparams-to-bundle-parameters)
+    - [Use `ChildModifier` to Abstract Nested Population](#use-childmodifier-to-abstract-nested-population)
+- [Build the Full Team Structure](#build-the-full-team-structure)
+- [Populate in Parallel](#populate-in-parallel)
+- [Use `BatchFinder` to Find Data in Batches](#use-batchfinder-to-find-data-in-batches)
+- [Immutable, Mutable, and Semi-mutable Model Classes](#immutable-mutable-and-semi-mutable-model-classes)
+- [Performance Analysis](#performance-analysis)
+- [Use Populator as an Application-Wide Strategy](#use-populator-as-an-application-wide-strategy)
+- [Helpful Tips](#helpful-tips)
+    - [When Child Setter Returns `void` Instead of `this`](#when-child-setter-returns-void-instead-of-this)
+    - [Adapting Finder Parameter Types](#adapting-finder-parameter-types)
+    - [One-shot Static Version of Populate Methods](#one-shot-static-version-of-populate-methods)
+    - [Type Hinting for Better IDE Error Detection](#type-hinting-for-better-ide-error-detection)
+    - [Using `Populator` with Transaction](#using-populator-with-transaction)
+    - [Child Finder Arguments](#child-finder-arguments)
+- [Explore the Demos for More Details](#explore-the-demos-for-more-details)
+- [Contributing, Issues & License](#contributing-issues--license)
 
----
+## Getting Started
 
-## Why Populator?
+Just copy 2 files into your project — no jar, no dependency, Java 8 compatible:
 
-Data frameworks work well for basic database operations, but they can struggle when assembling complex, multi-level object trees.
+* `Populator.java`
+* `BatchFinder.java`
 
-### Problems it solves:
-* **The Join Explosion and Mapping Difficulty:** Joining multiple one-to-many tables in a single SQL query duplicates data across the network and slows down your database. It also makes mapping those flat query results back into nested object structures complex.
-* **The N+1 Query Trap:** Fetching child records inside a loop creates too many individual database or API requests.
-* **Hybrid Data Sources:** Traditional frameworks assume all your data lives in databases reachable in one query. They cannot easily connect a database entity to a child object that comes from a remote REST or gRPC API.
+Package: `banyaninbreeze.populator` (in `populator` folder)
 
-### How Populator helps:
-* **Solving Complex Data Mapping:** Use `Populator` alongside existing data layers (JPA, JDBC, jOOQ, MyBatis) to handle complex mapping challenges.
-* **Application-Wide Solution:** Serves as a core data assembly strategy for clean, reusable, and scalable code.
-* **Mix Data Sources:** Combine database rows and remote API responses in a single, fluent method chain.
-* **Virtually Zero Learning Curve:** Only a handful of functions and classes from a 340-line codebase to learn.
-* **Low Cognitive Load:** Replaces massive SQL queries and complex data mapping logic with small building blocks and simple function calls.
-* **Performance for High Standards:** Fetches data without duplication compared to large table joins, reducing network and memory overhead.
-* **No Dependencies:** Pure Java implementation requiring no external libraries.
+#### Explore Demos
 
----
+Check the `demo` folder:
 
-## Installation
+* `simple` and `bookstore` examples
+* Requires Java 17+
+* Copy-paste to your machine and run
+* No third-party dependencies
 
-Since Populator is a plain source code utility, you do not need to install or import a JAR dependency. Just copy the package `banyaninbreeze.populator` (including `Populator.java` and `BatchFinder.java`) into your project's source folder.
+## Introduce Populator
 
-* **Core Utility:** The two core source files (`Populator.java` and `BatchFinder.java`) are compatible with **Java 8 or higher** and have zero dependencies on third-party libraries.
-* **Demos:** The included example projects require **Java 17 or higher** to run, and also have zero dependencies on third-party libraries.
-
----
-
-## Demonstrate Populator with Examples
-
-I will use simple examples to explain how to use Populator. For more details, explore the two demos in the repository that I will explain soon.
-
-### Start with the Simplest Scenario
-
-Assume you have two tables of one-to-many relationship: team and member as the following:
+Use the simplest example to begin with: `team` and `member` DB tables of one-to-many relationship:
 
 ```text
 Team
   └── (many) Members
 ```
 
-You want to compose the following data model for the client side (I could use records here like in the "simple" demo program, but let's use classes here):
+The domain model (Can be JPA entity, POJO, Java record, etc.):
 
 ```java
+// Populator also works with immutable classes and Java records.
+// This demo uses mutable classes.
+
 class Team {
     Integer id;
     String name;
-    List<Member> members;
+    List<Member> members; // To be populated later
 
     // ... getters/setters/constructors
 }
@@ -102,39 +126,42 @@ class Member {
 }
 ```
 
-With other frameworks, you use `JOIN FETCH`, `JOIN` plus custom Java loop mapping, or jOOQ's MULTISET subqueries with record mappers.
-
-With Populator approach, you do the following:
+Instead of building one SQL to join the tables, create 2 separate queries - one for team, one for member. Use Spring JPA/JDBC, jOOQ or any framework to implement:
 
 ```java
-// SQL: SELECT team.id, team.name FROM team WHERE ...
+// SQL: SELECT id, name FROM team WHERE ...
 List<Team> findTeamsBySomeCriteria(/* ... some criteria */)  { ... }
 
-// SQL: SELECT member.id, member.name FROM member WHERE team_id IN (:teamIds)
+// SQL: SELECT id, name, team_id FROM member WHERE team_id IN (:teamIds)
 List<Member> findMembersByTeamIds(Collection<Integer> teamIds)  { ... }
+```
 
+Use `Populator` to call them and stitch the results together:
+
+```java
 List<Team> findTeamsWithMembersPopulated(/* ... some criteria */) {
-    // Use Populator to fetch members and stitich teams with members
     List<Team> teams = findTeamsBySomeCriteria(/* ... some criteria */);
     teams = Populator.of(teams)
             .populateMany(Team::getId, Member::getTeamId,
-                         this::findMembersByTeamIds, Team::setMembers)
+                this::findMembersByTeamIds, Team::setMembers)
             .run();
-    return teams; // already populated with Member objects
+    return teams; // teams now populated with members
 }
 ```
-*(Note: In the above example, we assume Team.setMembers() is a setter that returns "this". See the "simple" demo for a simple solution if setMembers() can only return void.)*
 
-Alternatively, you can use the one-shot static method `populateMany()` to do the population in a single call::
+What this does:
+* Creates a Populator instance for teams
+* Calls `populateMany()` to describe how to populate teams. It takes four arguments:
+  * `Team::getId` and `Member::getTeamId` - the fields that link the two types
+  * The finder method to load members by team IDs: `findMembersByTeamIds`
+  * The setter that assigns members to a team
+* Calls `run()`, which executes the whole procedure and returns teams populated with members
 
-```java
-teams = Populator.populateMany(teams, Team::getId, Member::getTeamId,
-                        this::findMembersByTeamIds, Team::setMembers);
-```
+Use `populateMany()` for one-to-many relationships. For one-to-one or many-to-one, use `populateOne()`.
 
-#### How It Works under the Hood
+#### How It Works Under the Hood
 
-Curious about what `populateMany()` does internally? It virtually does this:
+To fetch teams and members and stitch them together, you can manually write the following code:
 
 ```java
 List<Team> teams = findTeamsBySomeCriteria(/* ... some criteria */);
@@ -142,147 +169,158 @@ List<Team> teams = findTeamsBySomeCriteria(/* ... some criteria */);
 Set<Integer> teamIds = teams.stream()
                     .map(Team::getId).collect(Collectors.toSet());
 List<Member> members = findMembersByTeamIds(teamIds);
+
+// Group members by team ID
 Map<Integer, List<Member>> memberMap = 
     members.stream().collect(Collectors.groupingBy(Member::getTeamId));
+
 teams = teams.stream()
-    .map(team -> team.withMembers(memberMap.get(team.getId())))
+    .map(team -> team.setMembers(memberMap.get(team.getId())))
     .toList();
 ```
 
-Populator uses generics to implement the logic and can be used for any data types and child finder methods. By using Populator, you don't need to implement the same logic each time you want to stitch the data objects together.
+Since it finds all members with all team IDs at once, it avoids N+1 queries.
 
-### More Complex Scenario - Multi-level, Multi-sibling Structure, Multi-Datasource
+At its core, `Populator` does the same thing, but with generics instead of hardcoded types like `Team`, `Member`, and `Integer`.
 
-Assume the team-member database is expanded to include manager and title tables as well. What's more, you need to call a remote API to get member contact methods from an external directory. Here is the structure:
+**Note:** We assume the `setMembers()` in `Team` returns `this` instead of `void`. See "Helpful Tips" later in this document for how to handle setters that returns `void`.
+
+## Build More Complex Object Structures
+
+### Two or More Siblings (Horizontal Population)
+
+This structure has 2 children under `Team`:
 
 ```text
 Team
   ├── (one) Manager
   └── (many) Members
-        ├── (one) Title
-        └── (many) ContactMethods (from remote API call)
 ```
-
-With Populator, the multi-level, multi-sibling structure can be built easily:
+Chain populate calls to populate all children:
 
 ```java
-// Add model classes Manager, Title, and ContactMethod
-class Manager { ... }
-class Title { ... }
-class ContactMethod { ... }
-
-// Modify Member to include fields for title and contact methods
-class Member {
-    Integer id;
-    String name;
-    Integer teamId;
-    Integer titleId; // new field in member table
-    String employeeId; // new field in table, reference to external directory
-
-    Title title; // new - to be populated
-    List<ContactMethod> contactMethods; // new - to be populated
-
-    // ... getters/setters/constructors
-}
-
-// Implement database query functions for finding managers and titles
-List<Manager> findManagersByTeamIds(Collection<Integer> teamIds) { ... }
-List<Title> findTitlesByIds(Collection<Integer> titleIds) { ... }
-
-// Remote API call to get contact methods from external directory
-List<ContactMethod> findContactMethodsByEmployeeIds(
-                        Collection<String> employeeIds) { ... }
-
-// The key pattern for multi-level, multi-datasource stitching
-List<Team> findTeamsWithEverythingPopulated(/* ... some criteria */) {
-    List<Team> teams = findTeamsBySomeCriteria(/*... some criteria */);
-    
-    teams = Populator.of(teams)
-        // Level 1 Sibling: Fetch and stitch single Managers from DB
+teams = Populator.of(teams)
         .populateOne(Team::getId, Manager::getTeamId, 
-                    this::findManagersByTeamIds, Team::setManager)
-        
-        // Level 1 Sibling: Fetch and stitch Members from DB
-        .populateMany(
-            Team::getId,
-            Member::getTeamId,
-            teamIds -> {
-                var members = this.findMembersByTeamIds(teamIds);
-                
-                // Level 2: Stitch members with sub-children before returning
-                return Populator.of(members)
-                    .populateOne(Member::getTitleId, Title::getId, 
-                                this::findTitlesByIds, Member::setTitle)
-                    .populateMany(Member::getEmployeeId,
-                                ContactMethod::getEmployeeId, 
-                                this::findContactMethodsByEmployeeIds,
-                                Member::setContactMethods) // Remote API Call!
-                    .run();
-            },
-            Team::setMembers
-        )
+            this::findManagersByTeamIds, Team::setManager)
+        .populateMany(Team::getId, Member::getTeamId,
+            this::findMembersByTeamIds, Team::setMembers)
         .run();
-
-    return teams; // already populated with the multi-level objects
-}
 ```
 
-### Using PopulateParams for Cleaner and Reusable Code
+### Two or More Nested Levels (Vertical Population)
 
-Instead of passing four separate parameters (two ID getters, one finder, and one setter) directly to a method, you can encapsulate them inside a `PopulateParams` object and pass it to the `.populate()` method. 
+This structure has 2 levels of nesting:
 
-`PopulateParams` instances can be defined once and shared across your project, and this keeps your code cleaner.
-
-Here is an example of creating and using a `PopulateParams` object for a one-to-many relationship:
-```java
-PopulateParams<Team, Member, Integer> paramsTeamWithMembers() {
-    return PopulateParams.ofMany(Team::getId, Member::getTeamId,
-                                 this::findMembersByTeamIds, Team::setMembers);
-}
-
-List<Team> findTeamsWithMembersPopulated(/* ... some criteria */) {
-    List<Team> teams = findTeamsBySomeCriteria(/* ... some criteria */);
-    return Populator.of(teams).populate(paramsTeamWithMembers()).run();
-}
+```text
+Team
+  └── (many) Members
+        └── (many) Assignments
 ```
-*(Note: Use `PopulateParams.ofOne()` for one-to-one relationships).*
 
-### Using ChildModifier for Ultimate Reusability
-
-In the above example, assume you want to populate `Members` with their `ContactMethods`, you could do it like this:
+Do this:
 
 ```java
-PopulateParams<Team, Member, Integer> paramsTeamWithMembers() {
-    return PopulateParams.ofMany(Team::getId, Member::getTeamId,
+teams = Populator.of(teams)
+    .populateMany(Team::getId, Member::getTeamId,
+        // Instead of passing this::findMembersByTeamIds,
+        // pass a lambda so that we can populate members before returning
         teamIds -> {
-            var members = findMembersByTeamIds(teamIds);
+            var members = this.findMembersByTeamIds(teamIds);
+            // Populate members with assignments
             return Populator.of(members)
-                .populate(paramsMemberWithContactMethods())
+                .populateMany(Member::getId, Assignment::getMemberId, 
+                        this::findAssignmentsByMemberIds,
+                        Member::setAssignments)
                 .run();
         },
-        Team::setMembers);
-}
+        Team::setMembers
+    )
+    .run();
 ```
-While this compiles and works, it introduces two architectural problems:
-1. Developers looking at the top-level code cannot tell that calling `paramsTeamWithMembers()` also fetches contact data unless they look inside this function to find out.
-2. If one place needs members *with* contact methods, but another place needs members *without* them, you cannot reuse this function for both.
 
-To solve this, Populator includes the `ChildModifier` interface. It is a simple interface similar to Java's `Function<T, U>` but is designed specifically for Populator:
+How it works:
+1. Inside `Populator.of(teams).populateMany()`, it calls the child finder to fetch members.
+2. Inside that finder, we not only fetch members via `findMembersByTeamIds()`, but also populate them with assignments before returning.
+3. Back in the outer `populateMany()`, it assigns those members (already populated with assignments) to their teams.
+
+### More Complex Population
+
+To build this structure:
+
+```text
+Team
+  ├── (one) Manager
+  └── (many) Members
+        └── (many) Assignments
+```
+
+Combine horizontal and vertical population:
 
 ```java
-public static interface ChildModifier<C> {
-    // A passthrough instance that returns the list untouched
+teams = Populator.of(teams)
+        .populateOne(Team::getId, Manager::getTeamId, 
+            this::findManagersByTeamIds, Team::setManager)
+        .populateMany(Team::getId, Member::getTeamId,
+            teamIds -> {
+                var members = this.findMembersByTeamIds(teamIds);
+                return Populator.of(members)
+                    .populateMany(Member::getId, Assignment::getMemberId, 
+                            this::findAssignmentsByMemberIds,
+                            Member::setAssignments)
+                    .run();
+            },
+            Team::setMembers)
+        .run();
+```
+
+## `PopulateParams` and `ChildModifier`: Cleaner and Reusable Code
+
+### Use `PopulateParams` to Bundle Parameters
+
+Instead of passing four separate parameters (two ID getters, one finder, and one setter), you can bundle them into a `PopulateParams` object and pass it to `populate()`.
+
+```java
+PopulateParams<Team, Member, Integer> populateParams =
+    PopulateParams.ofMany(
+        Team::getId, Member::getTeamId,
+        this::findMembersByTeamIds, Team::setMembers
+    );
+
+teams = Populator.of(teams)
+    .populate(populateParams)
+    .run();
+```
+
+Use `PopulateParams.ofOne()` for one-to-one or many-to-one, and `PopulateParams.ofMany()` for one-to-many.
+
+Note that the method is `populate()`, not `populateOne()` or `populateMany()` — `PopulateParams` already knows whether it's one or many.
+
+This also lets you define params once and reuse them across the app.
+
+### Use `ChildModifier` to Abstract Nested Population
+
+`ChildModifier` is a simple interface that comes with Populator. It's similar to `Function<T, U>`, but designed to abstract nested population. Here's its source code (you don't need to write it):
+
+
+```java
+public interface ChildModifier<C> {
+    // Passthrough: returns the list untouched
     static <C> ChildModifier<C> none() {
         return children -> children;
     }
 
-    // Takes the child collection and modifies and/or returns it
+    // Modify the child collection and/or return it
     List<C> modify(List<C> children);
 }
 ```
 
-By adding a `ChildModifier` to the parameter creators, you can control the data population of all levels from the top-level code:
+Use `ChildModifier` with `PopulateParams` to build this structure:
 
+```text
+Team
+  └── (many) Members
+        └── (many) Assignments
+```
 ```java
 PopulateParams<Team, Member, Integer> paramsTeamWithMembers(
             ChildModifier<Member> childModifier) {
@@ -291,101 +329,209 @@ PopulateParams<Team, Member, Integer> paramsTeamWithMembers(
         Team::setMembers);
 }
 
-// Scenario A: Populate members WITH contact methods
-List<Team> findTeamsWithMembersAndContacts(/* ... some criteria */) {
+PopulateParams<Member, Assignment, Integer> paramsMemberWithAssignments() {
+    return PopulateParams.ofMany(Member::getId, Assignment::getMemberId,
+        this::findAssignmentsByMemberIds,
+        Member::setAssignments);
+}
+
+// Case A: Populate members WITH assignments
+List<Team> findTeamsWithMembersAndAssignments(/* ... some criteria */) {
     List<Team> teams = findTeamsBySomeCriteria(/* ... some criteria */);
+
     return Populator.of(teams)
         .populate(paramsTeamWithMembers(
+            // Lambda of ChildModifier:
             members -> Populator.of(members)
-                .populate(paramsMemberWithContactMethods())
+                .populate(paramsMemberWithAssignments())
                 .run()
         ))
         .run();
 }
 
-// Scenario B: Populate members ONLY (No contacts)
+// Case B: Populate members with NO assignments
 List<Team> findTeamsWithMembersOnly(/* ... some criteria */) {
     List<Team> teams = findTeamsBySomeCriteria(/* ... some criteria */);
+
     return Populator.of(teams)
         .populate(paramsTeamWithMembers(ChildModifier.none()))
         .run();
 }
 ```
+By using `ChildModifier` in the `PopulateParams` creator methods, the creators don't populate children themselves — they leave that decision to the caller. This makes the creators reusable and lets callers chain population to any nesting level.
 
-The full function `findTeamsWithEverythingPopulated()` can be rewritten with `PopulateParams` and `ChildModifier` as following: 
+## Build the Full Team Structure
+
+```text
+Team
+  ├── (one) Manager
+  ├── (many) Members
+  │     ├── (many) ContactMethods (from a remote API)
+  │     └── (many) Assignments
+  └── (many) Projects
+        └── (many) Tasks
+```
+
+Model classes:
+```java
+class Team {
+    Integer id;
+    String name;
+
+    Manager manager;
+    List<Member> members; // To be populated later
+    List<Project> projects; // To be populated later
+    // ... getters/setters/constructors
+}
+
+class Manager { ... }
+class Member {
+    Integer id;
+    String name;
+    Integer teamId;
+    String employeeId;
+
+    List<ContactMethod> contactMethods; // To be populated later
+    List<Assignment> asignments; // To be populated later
+    // ... getters/setters/constructors
+}
+
+class ContactMethod { ... }
+class Assignment { ... }
+
+class Project {
+    Integer id;
+    String name;
+    Integer teamId;
+
+    List<Task> tasks; // To be populated later
+    // ... getters/setters/constructors
+}
+class Task { ... }
+```
+
+Finder functions:
+```java
+List<Team> findTeamsBySomeCriteria(...) { ... }
+
+List<Manager> findManagersByTeamIds(Collection<Integer> teamIds) { ... }
+List<Member> findMembersByTeamIds(Collection<Integer> teamIds) { ... }
+
+List<ContactMethod> findContactMethodsByEmployeeIds( // remote API client
+    Collection<String> employeeIds) { ... }
+List<Assignment> findAssignmentsByMemberIds(Collection<Integer> memberIds) { ... }
+
+List<Project> findProjectsByTeamIds(Collection<Integer> teamIds) { ... }
+List<Task> findTasksByProjectIds(Collection<Integer> projectIds) { ... }
+```
+
+`PopulateParams` Creators
+```java
+// Each is one call to PopulateParams.ofMany() / ofOne()
+PopulateParams<Team, Manager, Integer> paramsTeamWithManager() {...}
+PopulateParams<Team, Member, Integer> paramsTeamWithMembers(
+    ChildModifier<Member> childModifier) {...}
+PopulateParams<Member, ContactMethod, String> paramsMemberWithContactMethods() {...}
+PopulateParams<Member, Assignment, Integer> paramsMemberWithAssignments()  {...}
+PopulateParams<Team, Project, Integer> paramsTeamWithProjects(
+    ChildModifier<Project> childModifier) {...}
+PopulateParams<Project, Task, Integer>  paramsProjectWithTasks() {...}
+```
+
+Populate all levels:
 
 ```java
-// Add paramsTeamWithManager(), paramsMemberWithTitle(),
-//     paramsMemberWithContactMethods()
-
 List<Team> findTeamsWithEverythingPopulated(/* ... some criteria */) {
-    List<Team> teams = findTeamsBySomeCriteria(/* ... some criteria */);
+    List<Team> teams = findTeamsBySomeCriteria(/*...*/);
     
-    return Populator.of(teams)
+    teams = Populator.of(teams)
         .populate(paramsTeamWithManager())
         .populate(paramsTeamWithMembers(
             members -> Populator.of(members)
-                .populate(paramsMemberWithTitle())
                 .populate(paramsMemberWithContactMethods())
+                .populate(paramsMemberWithAssignments())
+                .run()
+        ))
+        .populate(paramsTeamWithProjects(
+            projects -> Populator.of(projects)
+                .populate(paramsProjectWithTasks())
                 .run()
         ))
         .run();
+
+    return teams; // already populated with the multi-level objects
 }
 ```
-Now, it is clean, simple, and shows the whole structure of the data objects in one place.
 
-### Populate Siblings in Parallel
+The benefits are:
 
-Populator features built-in parallel processing to improve data-fetching performance. Using it is simple: change your terminal method call from `.run()` to `.runParallel()`.
+* Breaks complex assembly into small, simple functions.
+* Avoids N+1 queries and Cartesian product issues.
+* Keeps all assembly logic in one place — no need to jump between functions to see how the structure is built.
+* The small functions are reusable across the whole application.
+* AI-generated code using Populator is simple and easy to review
 
-Here is the concurrent version of our complex multi-level function:
+## Populate in Parallel
+
+`Populator` can fetch data in parallel to run faster. Just change `run()` to `runParallel()`.
+
+Here is part of the example above, rewritten for parallel execution:
 
 ```java
-List<Team> findTeamsWithEverythingPopulatedParallel(/* ... some criteria */) {
-    List<Team> teams = findTeamsBySomeCriteria(/*... some criteria */);
+List<Team> findTeamsWithEverythingPopulated(/* ... some criteria */) {
+    List<Team> teams = findTeamsBySomeCriteria(...);
     
-    return Populator.of(teams)
+    teams = Populator.of(teams)
         .populate(paramsTeamWithManager())
         .populate(paramsTeamWithMembers(
             members -> Populator.of(members)
-                .populate(paramsMemberWithTitle())
                 .populate(paramsMemberWithContactMethods())
+                .populate(paramsMemberWithAssignments())
                 .runParallel() // <-- parallel
         ))
+        .populate(paramsTeamWithProjects(
+            projects -> Populator.of(projects)
+                .populate(paramsProjectWithTasks())
+                .run()
+        ))
         .runParallel(); // <-- parallel
+
+    return teams;
 }
 ```
 
-Alternatively, you can call `.runWithMode(boolean parallel)` to pass a boolean flag that switches between sequential and parallel processing dynamically.
+Alternatively, call `runWithMode(boolean parallel)` to switch between sequential and parallel execution dynamically.
 
 #### How It Works under the Hood
-When you execute `runParallel()`, Populator calls all data finder functions at that specific level concurrently using an internal thread pool. Once all threads finish retrieving the child datasets, Populator switches back to sequential execution to stitch the child objects into their parents one parameter at a time. This design ensures that immutable records or copy-on-write classes can safely set all child objects in parent objects without losing any of them.
+
+When you call `runParallel()`, Populator fetches all child datasets concurrently. After all fetches complete, it stitches the children into their parents one by one.This two-phase design is important for immutable parents that use `withXxx(child)` methods. It ensures no child data is lost when multiple children are set.
 
 #### Using a Virtual Thread Pool with Java 21+
 
-By default, `Populator` uses `Executors.newCachedThreadPool()` as its global thread pool. You can change this default thread pool using a static setter method.
+By default, `Populator` uses `Executors.newCachedThreadPool()` as its global thread pool. You can change it with a static setter.
 
-If your project uses Java 21 or higher, it is highly recommended to switch to a Virtual Thread pool. Virtual threads do not block OS carrier threads, which maximizes network I/O throughput and safely prevents thread-starvation deadlocks during nested parallel runs.
+On Java 21 or higher, it's recommended to switch to a virtual thread pool. Virtual threads don't block OS threads, so they give better throughput for network I/O and help avoid thread-starvation deadlocks in nested parallel runs.
 
-Add the following code as part of your project's startup code:
-
+Add this to your application startup:
 ```java
 Populator.setGlobalExecutorService(Executors.newVirtualThreadPerTaskExecutor());
 ```
 
-#### Thread-Starvation Deadlock Prevention
+#### Avoiding Thread-Starvation Deadlock
 
-If you change the default thread pool to a custom thread pool with a **fixed or limited number of threads**, a thread-starvation deadlock can occur if you invoke `runParallel()` at multiple nested levels simultaneously (like the example above). This happens because the outer threads will block while waiting for the inner threads to finish, exhausting the pool. If you must use a limited thread pool, use `runParallel()` at either parent or child levels, not both.
+`Populator`'s default thread pool will not cause thread-starvation deadlock.
 
-If you don't change the default thread pool, you don't need to worry about thread-starvation deadlock.
+But if you replace the default pool with a fixed-size pool, you can get a deadlock when you call `runParallel()` at multiple nested levels. For example, outer tasks can block waiting for inner tasks, while all threads in the pool are already in use.
 
-### Safe Query Batching with BatchFinder
+If you must use a limited pool, use `runParallel()` at only one level - either the parent or the child, not both.
+
+## Use `BatchFinder` to Find Data in Batches
 
 When using `Populator`, your application will rely heavily on batch lookup methods (like `findMembersByIds(Collection<Integer> ids)`). However, passing large or unpredictable numbers of IDs directly to a database can cause two major problems:
 1. **Parameter Limits:** Many databases fail if an `IN` clause exceeds maximum parameter limits (e.g., Oracle's 1,000-item limit).
 2. **Cache Bloat:** Passing a varying number of IDs (like anywhere between 1 to 1000) forces the database to re-compile execution plans for each variation, bloating the prepared statement cache.
 
-`BatchFinder` is a companion utility coming with Populator. It splits a large collection of IDs into predictable, standardized batch sizes, calls the provided finder function for each batch of IDs, and merges the results into one list. This solves both problems.
+`BatchFinder` is a utility class coming with Populator. It splits a large collection of IDs into predictable, standardized batch sizes, calls the provided finder function for each batch of IDs, and merges the results into one list. This solves both problems.
 
 Here is an example:
 ```java
@@ -399,13 +545,11 @@ private List<Member> localFindMembersByIds(Collection<Integer> ids) { ... }
 
 The best practice is to encapsulate `BatchFinder` directly inside your repository. If you use Spring Data JDBC/JPA's Repository interface to implement the finders, you can add an "interface default" function for `findMembersByIds()`, while `localFindMembersByIds()` is your actual data access function annotated with `@Query`. This keeps your `Populator` chains completely clean.
 
-For the details of how `BatchFinder` works under the hood, feel free to explore the source code.
+## Immutable, Mutable, and Semi-mutable Model Classes
 
-### Immutable, Mutable, and Semi-mutable Model Classes
+Populator can stitch together both immutable and mutable parents and children. The key is the setter parameter passed to `populateOne()`, `populateMany()`, `PopulateParams.ofOne()`, or `PopulateParams.ofMany()`.
 
-Populator can stitch both immutable and mutable parent and child objects together. The key part is the setter parameter passed to methods like `populateOne()`, `populateMany()`, `PopulateParams.ofOne()`, or `PopulateParams.ofMany()`. 
-
-The setter function must do two things: assign the child object(s) to the parent, and then return that parent instance. This can be an immutable object's copy method (like a "wither") or a mutable object's setter that returns `this`. You can easily use tools like Lombok to auto-generate these setters or withers.
+The setter must do two things: assign the child object(s) to the parent, and return that parent instance. This can be an immutable object's copy method (a "wither" like `withMembers`) or a mutable object's setter that returns `this`. You can use Lombok to auto-generate these setters or withers.
 
 #### For Immutable Classes and Records
 
@@ -413,7 +557,7 @@ The setter function must do two things: assign the child object(s) to the parent
 record Team(
     Integer id,
     String name,
-    List<Member> members // Child objects to be populated
+    List<Member> members // Child objects populate
 ) {
     public Team(Integer id, String name) {
         this(id, name, null);
@@ -431,44 +575,6 @@ teams = Populator.of(teams)
         .run();
 ```
 
-#### For Mutable Classes
-
-```java
-class Team {
-    Integer id;
-    String name;
-    List<Member> members; // Child objects to be populated
-
-    public Team(Integer id, String name) {
-        this.id = id;
-        this.name = name;
-    }
-
-    public Team setMembers(List<Member> members) {
-        this.members = members;
-        return this; // <-- Return "this"
-    }
-
-    // ... other getters and setters
-}
-
-// Populate teams with members:
-teams = Populator.of(teams)
-        .populateMany(Team::getId, Member::getTeamId,
-                    this::findMembersByTeamIds,
-                    Team::setMembers) // <-- Pass the setter
-        .run();
-```
-
-If you cannot change your setter methods to return `this`, you can wrap the assignment in a short inline lambda expression instead:
-```java
-teams = Populator.of(teams)
-        .populateMany(Team::getId, Member::getTeamId,
-                this::findMembersByTeamIds,
-                (team, members) -> { team.setMembers(members); return team; })
-        .run();
-```
-
 #### Use Semi-mutable Classes if Possible
 If you have control over your data models, the best approach is to make your core primitive fields `final` (like `id` and `name` in the `Team` class) and keep your child object references mutable with setters. 
 
@@ -477,132 +583,104 @@ For added protection from unwanted changes outside your data layer, make the set
 #### Memory Usage Considerations
 For high-throughput production systems, using semi-mutable or mutable data models is highly recommended. It uses much less memory and runs faster because it prevents heavy object copying and constant garbage collection cleanups during deep nesting runs.
 
-### Small Type Hinting, Big Help
-
-When you call `populateOne()`, `populateMany()`, or create a `PopulateParams` instance, you can explicitly add type arguments right in front of the method name like this:
-
-```java
-teams = Populator.of(teams)
-        .<Team, Member, Integer>populateMany(Team::getId, Member::getTeamId,
-                        this::findMembersByTeamIds, Team::setMembers)
-        .run();
-```
-
-While type arguments are not required by the compiler here, adding them helps your IDE immediately identify syntax errors in your parameter list. 
-
-Without the type arguments, if you make a typo (such as writing `Team::getid` instead of `Team::getId`), the IDE gets confused and underlines the *entire method call* in red, and you wonder where the actual error is. Once you add the type arguments explicitly, your IDE can point directly to the typo. If you want to keep your code clean, you can delete the type arguments after the block is finished.
-
-### Data Consistency with Transaction
-
-Normally, you don't need to stress about strict data consistency when making separate queries to fetch your data. It's the same story with `Populator`: each chained `populate()` call runs as an independent query, so leaving them out of a transaction is usually fine.
-
-However, if you do need to wrap your populator chain in a transaction, keep these two rules in mind:
-
-1. **Stick to `run()` instead of `runParallel()`.** Parallel threads won't play nice with your database transaction. Even worse, holding an open transaction connection while trying to borrow more connections in separate threads can starve your connection pool.
-2. **Never mix remote API calls with a database transaction.** If a third-party API slows down, it will hang onto your database connection for way too long, tanking your app's performance.
-
-If you must combine data from a remote API with transactional database data, you have to separate the calls. Here is how:
-
-1. Populate top-level data with remote API data
-```java
-// Open the database transaction using Spring's TransactionTemplate
-List<Member> members = transactionTemplate.execute(status -> {
-    List<Member> localMembers = findMembersBySomeCriteria(...);
-    
-    return Populator.of(localMembers)
-        .populate(paramsMemberWithTitle()) 
-        .run();
-});
-
-// Populate with remote API data outside the transaction
-members = Populator.of(members)
-        .populate(paramsMemberWithContactMethods())
-        .run();
-```
-
-2. Populate nested sub-level data with remote API data:
-*(Note: This pattern assumes that `Member`'s `setContactMethods()` is a mutable setter that returns the same `Member` object).*
-
-```java
-AtomicReference<List<Member>> atomicMembers = new AtomicReference<>();
-
-// Open the database transaction
-List<Team> teams = transactionTemplate.execute(status -> {
-    List<Team> localTeams = findTeamsBySomeCriteria(...);
-    
-    return Populator.of(localTeams)
-        .populate(paramsTeamWithManager())
-        .populate(paramsTeamWithMembers(members -> {
-            List<Member> populatedMembers = Populator.of(members)
-                .populate(paramsMemberWithTitle())
-                .run();
-                
-            // Cache the reference to process later
-            atomicMembers.set(populatedMembers); 
-            return populatedMembers;
-        }))
-        .run();
-});
-
-// Populate with remote API data outside the transaction
-if (atomicMembers.get() != null) {
-    Populator.of(atomicMembers.get())
-        .populate(paramsMemberWithContactMethods())
-        .run();
-}
-```
-
----
-
 ## Performance Analysis
 
-To build multi-level object structures, the Populator approach and traditional approaches (single-query solutions like Spring Data JPA's `JOIN FETCH`) handle performance trade-offs differently.
+Performance is a complicated question with many moving variables.
 
-### Compare with Examples
-Assume you want to fetch **10 teams** that contain a total of **100 members** (an average of 10 members per team).
+`Populator` uses multiple smaller queries to do what a single query with multiple `JOINs` does. So what does that mean for performance?
 
-* **With the Populator approach:**
-  * Database Network Trips: **2 trips** (one for teams, one for members).
-  * Total Objects Fetched: **110 objects** (10 teams + 100 members).
-* **With the traditional approach:**
-  * Database Network Trips: **1 trip**.
-  * Total Objects Fetched: **200 objects** (10 teams repeated for 100 members + 100 members).
+**One thing to clarify first**: we are not discussing the performance of `Populator` itself, since it is just a stitching tool. We are comparing the *multiple-small-query approach* versus the *single-query approach*. The *multiple-small-query approach* has long existed — `Populator` just makes it extremely easy to implement.
 
-If you increase the dataset to **100 teams** and **1,000 members**, the number of trips remains the same, but the difference between the objects fetched grows significantly:
+### 1. Comparing the Approaches with Examples
 
-* **With the Populator approach:** Total objects fetched: **1,100 objects**.
-* **With the traditional approach:** Total objects fetched: **2,000 objects**.
+Let's look at the two biggest variables:
+* **Roundtrips to the database**
+* **Amount of data fetched**
 
-**Summary:**
-* The **Populator approach** takes **more network trips** but fetches **less data**.
-* The **Traditional approach** takes **fewer network trips** but fetches **more data**.
+Assume you want to fetch **10 teams** that have a total of **100 members** (an average of 10 members per team). 
 
-As the number of hierarchical levels and sibling relationships increase, the number of network trips for Populator increases at the same pace. However, the data size for single-query approaches grows drastically, which gets much worse as your database records scale up.
+The multiple-small-query approach fetches data from the team and member tables using 2 separate queries. The single-query approach joins the 2 tables together in 1 query.
 
-### Understanding the Trade-offs
+* **The Multiple-Small-Query Approach:**
+  * **Roundtrips:** 2 trips (one for teams, one for members).
+  * **Data Fetched:** 110 data items = 10 teams + 100 members.
+* **The Single-Query Approach (JOIN):**
+  * **Roundtrips:** 1 trip.
+  * **Data Fetched:** 200 data items = 100 team records (duplicated inside 100 joined rows) + 100 member records.
 
-* **More trips** mean more network latency. In a typical production environment where your Java application and database share a local network, a single network roundtrip takes no more than a few milliseconds, or even sub-millisecond.
-* **More data** means heavier payloads and more CPU overhead inside your Java application to create and recycle duplicate objects in memory.
+The multiple-small-query approach needs **1 extra network trip**, but it cuts the total amount of data by **90 data items (nearly 50%)**.
 
-This means:
-* For **simpler structures and fewer records**, the **traditional approach** of a single-join is **faster** because of its lower network latency, but only **by a very small margin** in a typical production environment.
-* For **more complex structures and more records**, the **Populator approach** is **faster** because it transfers a smaller amount of data and creates fewer objects.
+**Note**: *Data item sizes differ from table to table. The comparison illustrates relative growth and duplication trends, not exact byte counts.*
 
-### Other Performance Factors
-* **Database Workload:** Databases are very fast at running simple, index-driven primary key lookups (like `WHERE ID IN (?, ?, ...)`). Complex table joins force the database server to spend heavy CPU and memory resources sorting, merging, and filtering large datasets. Populator offloads this object stitching workload away from the database server and into the cheaper, horizontally scalable application server. **Populator wins this one.**
-* **Execution Plan Cache:** Populator relies heavily on SQL statements like `WHERE ID IN (?, ?, ...)`. Different numbers of parameters require different execution plans to be cached in the database. Passing random ID counts can flood this cache. However, because `BatchFinder` groups large lists into standardized batch steps, it limits cache variations to a predictable range. While the traditional single-query approach still has a clear advantage here, `BatchFinder` prevents runaway cache bloat and eliminates intermittent slowness under high traffic. **The traditional approach wins this one, but the difference is negligible in production.**
+What happens if the dataset grows to **100 teams** and **1,000 members**?
 
-### Conclusion on Performance
+* **The Multiple-Small-Query Approach:**
+  * **Roundtrips:** 2 trips.
+  * **Data Fetched:** 1,100 data items = 100 teams + 1,000 members.
+* **The Single-Query Approach (JOIN):**
+  * **Roundtrips:** 1 trip.
+  * **Data Fetched:** 2,000 data items = 1,000 team records (duplicated inside 1,000 joined rows) + 1,000 member records.
 
-The above analysis is only a general, rough idea regarding the most important factors. The real world is more complex; SQL query shapes, database indexes, connection pools, and many other factors also matter. So the analysis does not cover every single scenario.
+The multiple-small-query approach still needs **1 extra network trip**, but it cuts the total amount of data by **900 data items (nearly 50%)**.
 
-But in general, for a typical production envrionment that has low network latency betwee app server and database server:
-* For more complex structures and larger datasets, the Populator approach can deliver higher performance than the single-query approach.
-* For simpler structures and smaller datasets, the single-query approach may be faster by a very narrow margin.
+Let's add a third level: each member has 1 of 10 possible professional titles.
 
-Therefore, performance-wise, it is safe to choose the Populator approach as your main and consistent application-wide strategy.
+* **The Multiple-Small-Query Approach:**
+  * **Roundtrips:** 3 trips (one for teams, one for members, one for titles).
+  * **Data Fetched:** 1,110 data items = 100 teams + 1,000 members + 10 titles.
+* **The Single-Query Approach (JOIN):**
+  * **Roundtrips:** 1 trip.
+  * **Data Fetched:** 3,000 data items = 1,000 team records (duplicates) + 1,000 member records + 1,000 title records (duplicates).
 
----
+Now, the multiple-small-query approach needs **2 extra trips**, but it reduces the total amount of data by **1,890 data items (nearly 63%)**.
+
+### 2. Trends and Trade-offs
+
+To summarize the trade-off:
+* The **multiple-small-query** approach takes more roundtrips but fetches significantly less data.
+* The **single-query approach** takes fewer roundtrips but fetches a much heavier, duplicate-filled dataset.
+
+With the single-query approach, data volume increases **fast** as the following 3 values increase:
+* The number of nesting levels (table joins).
+* The number of rows fetched in each table.
+* The size/width of each data row.
+
+With the multiple-small-query approach, the number of roundtrips increases **slowly** as the following 2 values increase:
+* The number of nesting levels: add 1 roundtrip for 1 extra level.
+* The number of IDs: add 1 roundtrip for 1 extra batch.
+
+**What More Roundtrips Mean:**
+* **Network Latency**: If the app and DB are far apart, this hurts. But in prod they usually sit in the same local network, so a roundtrip is only 0.3 ms to 2 ms, sometimes as low as 0.1 ms. 3 queries add 0.3 ms to 6 ms, 10 queries add 1 ms to 20 ms - minor, but noticeable at the slow end. (But a single query joining 10 tables with lots of duplicate data can easily cost you far more than 20 ms.)
+
+**What a Heavier Data Volume Means:**
+* **CPU Burden:** Both the DB server and the app server spend more CPU cycles creating duplicate data objects.
+* **Garbage Collection:** Short-lived, duplicate data triggers more frequent JVM Garbage Collection cycles.
+* **Network Bandwidth:** Large datasets use up more network bandwidth.
+
+**Additional Facts:**
+* Multiple small queries rely on simple lookups, typically by primary key (`WHERE ID IN (?)`), which databases execute efficiently.
+* Complex JOIN execution typically requires more database work than simple primary-key or indexed lookups, especially as the number of joined relationships grows. And when a centralized DB hits its hardware limit, scaling vertically gets expensive fast.
+* Most SQL JOINs are one-to-many or many-to-one, which inevitably duplicates data. True one-to-one JOINs are rare because that data is usually stored in a single table. So the multiple-small-query approach can vastly reduce amount of data across the system.
+
+**Two Factors We Ignore Here:**
+1. **Indexing:** We assume proper indexing, so both approaches execute efficiently on key columns.
+2. **Execution Plan Cache:** Varying ID list sizes can bloat the cache, but `BatchFinder` chunks IDs into standard sizes, so the DB can safely reuse cached plans.
+
+### 3. Conclusions on Performance
+
+Every prod setup is unique, but here is a practical rule of thumb for picking your strategy based on network layout:
+
+* **If your app and DB share a fast local network (almost always the case in prod):**
+  * For complex structures and larger datasets, multiple small queries are often competitive with or faster than single query.
+  * For simple tables and smaller datasets, a single `JOIN` can be slightly faster, but only by a small margin.
+  * *The Takeaway:* On a fast local network, `Populator` is generally safe to use from a performance perspective and may provide performance benefits as graph complexity grows.
+* **If your app and DB are far apart (high latency):**
+  * Single-query wins, because extra roundtrips get too expensive over a slow connection.
+  * *The Takeaway:* Be cautious and measure your network lag before splitting queries.
+
+**In the past, network latency made multiple small queries expensive. Today, network latency is much lower. The tradeoff has changed.**
+
+Every prod system has its own limits. Under extreme traffic, running your own real-world benchmarks is the only way to be sure.
 
 ## Use Populator as an Application-Wide Strategy
 
@@ -611,6 +689,7 @@ You can use `Populator` in your applications in two ways.
 The first is to use it as a simple utility whenever you need to handle one-to-many associations or assemble data from different data sources (such as local databases and remote APIs). 
 
 The second way is to use it as a core architectural pattern to help create a highly scalable, maintainable, and high-performance application. To achieve this, you follow three clean steps:
+
 1. Create reusable building blocks in your **Repository Layer**.
 2. Use `Populator` to assemble them as needed in your **Service Layer**.
 3. Convert the assembled object structure into specific DTOs in the very end.
@@ -673,9 +752,183 @@ While you can organize your packages only by layer or only by feature, a hybrid 
 * **By Layer for Shared Data:** Define a top-level `repository` package. Because data models and query functions are shared across multiple unrelated features, keeping them centralized maximizes reuse. You can add `local` and `remote` sub-packages to separate database queries from external API clients.
 * **By Feature for Business Logic:** Organize your `service` and `controller` packages strictly by business feature to keep your core use-case logic modular and clean.
 
-### Explore the Bookstore Demo
+#### Explore the Bookstore Demo
 
 To see how this architecture works, check the `bookstore` demo in this repository. This ready-to-run project shows how using Populator with small, reusable building blocks turns rather complex requirements into a clean codebase.
+
+## Helpful Tips
+
+### When Child Setter Returns `void` Instead of `this`
+
+In this example:
+
+```java
+teams = Populator.of(teams)
+    .populateMany(Team::getId, Member::getTeamId,
+        this::findMembersByTeamIds, Team::setMembers)
+    .run();
+```
+
+The last parameter — the setter that assigns children to the parent — must return the parent. It can be a mutable setter that returns `this` or an immutable "wither" like withMembers.
+
+A traditional JavaBean setter returns `void`, so it won't work. If you can't change it to return `this`, wrap it:
+
+```java
+teams = Populator.of(teams)
+    .populateMany(Team::getId, Member::getTeamId,
+        this::findMembersByTeamIds,
+        (team, members) -> { team.setMembers(members); return team; }
+    )
+    .run();
+```
+
+### Adapting Finder Parameter Types
+
+If the finder method was written by someone else and takes `List<T>` instead of `Collection<T>`, and you can't change it, adapt the `Collection<T>` parameter to the required type:
+
+```java
+// Takes List<Integer>
+List<Member> findMembersByTeamIds(List<Integer> teamIds)  { ... }
+
+...
+teams = Populator.of(teams)
+    .populateMany(Team::getId, Member::getTeamId,
+        // Adapt the type of teamIds
+        teamIds -> findMembersByTeamIds(new ArrayList<>(teamIds)),
+        Team::setMembers)
+    .run();
+```
+
+### One-shot Static Version of Populate Methods
+
+In the examples above, we use `of(parents)` to create a `Populator`, then call `populate()` (or `populateOne()`, `populateMany()`) to define the relationship, and finally `run()` to execute. If you only need to populate one child field, there are static shortcuts that do all three steps in one call:
+
+```java
+// Static method to populate one-to-many data
+teams = Populator.populateMany(teams, Team::getId, Member::getTeamId,
+                        this::findMembersByTeamIds, Team::setMembers);
+
+// Static method to populate one-to-one or many-to-one data
+teams = Populator.populateOne(teams, Team::getId, Manager::getTeamId,
+                        this::findManagersByTeamIds, Team::setManager);
+
+// Static method to populate data using PopulateParams object
+teams = Populator.populate(teams, paramsTeamWithProjects(ChildModifier.none));
+```
+
+### Type Hinting for Better IDE Error Detection
+
+When you call `populateOne()`, `populateMany()`, or create a `PopulateParams` instance, you can explicitly add type arguments right in front of the method name like this:
+
+```java
+teams = Populator.of(teams)
+        .<Team, Member, Integer>populateMany(Team::getId, Member::getTeamId,
+                        this::findMembersByTeamIds, Team::setMembers)
+        .run();
+```
+
+While type arguments are not required by the compiler here, adding them helps your IDE immediately identify syntax errors in your parameter list. 
+
+Without the type arguments, if you make a typo (such as writing `Team::getid` instead of `Team::getId`), the IDE gets confused and underlines the *entire method call* in red, and you wonder where the actual error is. Once you add the type arguments explicitly, your IDE can point directly to the typo. If you want to keep your code clean, you can delete the type arguments after the block is finished.
+
+### Using `Populator` with Transaction
+
+Normally, you don't need to stress about strict data consistency when making separate queries to fetch your data. It's the same story with `Populator`: each chained `populate()` call runs as an independent query, so leaving them out of a transaction is usually fine.
+
+However, if you do need to wrap your populator chain in a transaction, keep these two rules in mind:
+
+1. **Stick to `run()` instead of `runParallel()`.** Parallel threads won't play nice with your database transaction. Even worse, holding an open transaction connection while trying to borrow more connections in separate threads can starve your connection pool.
+2. **Never mix remote API calls with a database transaction.** If a third-party API slows down, it will hang onto your database connection for way too long, tanking your app's performance.
+
+If you must combine data from a remote API with transactional database data, you have to separate the calls. Here is how:
+
+1. Populate top-level data with remote API data
+```java
+// Open the database transaction using Spring's TransactionTemplate
+List<Member> members = transactionTemplate.execute(status -> {
+    List<Member> localMembers = findMembersBySomeCriteria(...);
+    
+    return Populator.of(localMembers)
+        .populate(paramsMemberWithTitle()) 
+        .run();
+});
+
+// Populate with remote API data outside the transaction
+members = Populator.of(members)
+        .populate(paramsMemberWithContactMethods())
+        .run();
+```
+
+2. Populate nested sub-level data with remote API data:
+*(Note: This pattern assumes that `Member`'s `setContactMethods()` is a mutable setter that returns the same `Member` object).*
+
+```java
+AtomicReference<List<Member>> atomicMembers = new AtomicReference<>();
+
+// Open the database transaction
+List<Team> teams = transactionTemplate.execute(status -> {
+    List<Team> localTeams = findTeamsBySomeCriteria(...);
+    
+    return Populator.of(localTeams)
+        .populate(paramsTeamWithManager())
+        .populate(paramsTeamWithMembers(members -> {
+            List<Member> populatedMembers = Populator.of(members)
+                .populate(paramsMemberWithTitle())
+                .run();
+                
+            // Cache the reference to process later
+            atomicMembers.set(populatedMembers); 
+            return populatedMembers;
+        }))
+        .run();
+});
+
+// Populate with remote API data outside the transaction
+if (atomicMembers.get() != null) {
+    Populator.of(atomicMembers.get())
+        .populate(paramsMemberWithContactMethods())
+        .run();
+}
+```
+
+### Child Finder Arguments
+
+All examples above use find-by-IDs finders that take a single argument — the collection of IDs. But you can pass additional arguments. For example, to populate teams with members that have a specific title:
+
+```java
+String title = "SENIOR_SOFTWARE_ENGINEER";
+teams = Populator.of(teams)
+    .populateMany(Team::getId, Member::getTeamId,
+        // Pass title here
+        teamIds -> findMembersByTeamIdsAndTitle(teamIds, title),
+        Team::setMembers)
+    .run();
+```
+
+If using `PopulateParams`:
+
+```java
+PopulateParams<Team, Member, Integer> paramsTeamWithMembers(
+            String title, ChildModifier<Member> childModifier) {
+    return PopulateParams.ofMany(Team::getId, Member::getTeamId,
+            teamIds -> childModifier.modify(
+                findMembersByTeamIdsAndTitle(teamIds, title)
+            ),
+            Team::setMembers);
+}
+```
+
+```java
+String title = "SENIOR_SOFTWARE_ENGINEER";
+teams = Populator.of(teams)
+    .populate(paramsTeamWithMembers(
+        title,
+        members -> Populator.of(members)
+            .populate(paramsMemberWithContactMethods())
+            .run()
+    ))
+    .run();
+```
 
 ---
 
