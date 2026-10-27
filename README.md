@@ -61,6 +61,7 @@ More than a problem solver, it can be an **application-wide strategy** that keep
     - [Use `PopulateParams` to Bundle Parameters](#use-populateparams-to-bundle-parameters)
     - [Use `ChildModifier` to Abstract Nested Population](#use-childmodifier-to-abstract-nested-population)
 - [Build the Full Team Structure](#build-the-full-team-structure)
+- [Building Blocks from Any Data Source](#building-blocks-from-any-data-source)
 - [Populate in Parallel](#populate-in-parallel)
 - [Use `BatchFinder` to Find Data in Batches](#use-batchfinder-to-find-data-in-batches)
 - [Immutable, Mutable, and Semi-mutable Model Classes](#immutable-mutable-and-semi-mutable-model-classes)
@@ -471,6 +472,19 @@ The benefits are:
 * The small functions are reusable across the whole application.
 * AI-generated code using Populator is simple and easy to review
 
+### Building Blocks from Any Data Source
+
+Populator does not require each building block to come from a single database table. A finder can retrieve or produce data in many ways, including:
+
+* Joining multiple tables in a database query
+* Computing aggregate values using functions such as `SUM` or `MAX`
+* Calling remote APIs
+* Reading from in-memory collections such as `List` and `Map`
+
+The key requirement is that the finder conforms to Populator’s API and provides data that can be associated with its parent objects through a common key, such as `Team.id` and `Member.teamId`.
+
+**Populator is responsible for assembling the object structure; finders are responsible for retrieving or computing the data.** This separation lets you combine data from different sources without tying object assembly to a particular storage technology.
+
 ## Populate in Parallel
 
 `Populator` can fetch data in parallel to run faster. Just change `run()` to `runParallel()`.
@@ -664,7 +678,7 @@ With the multiple-small-query approach, the number of roundtrips increases **slo
 
 **Two Factors We Ignore Here:**
 1. **Indexing:** We assume proper indexing, so both approaches execute efficiently on key columns.
-2. **Execution Plan Cache:** Varying ID list sizes can bloat the cache, but `BatchFinder` chunks IDs into standard sizes, so the DB can safely reuse cached plans.
+2. **Execution Plan Cache:** Varying ID list sizes can bloat the cache, but `BatchFinder` uses preferred batch sizes to limit variations in SQL parameter counts and help improve plan-cache reuse.
 
 ### 3. Conclusions on Performance
 
@@ -675,7 +689,7 @@ Every prod setup is unique, but here is a practical rule of thumb for picking yo
   * For simple tables and smaller datasets, a single `JOIN` can be slightly faster, but only by a small margin.
   * *The Takeaway:* On a fast local network, `Populator` is generally safe to use from a performance perspective and may provide performance benefits as graph complexity grows.
 * **If your app and DB are far apart (high latency):**
-  * Single-query wins, because extra roundtrips get too expensive over a slow connection.
+  * The single-query approach is more likely to be faster, because extra roundtrips get more expensive over a slower connection.
   * *The Takeaway:* Be cautious and measure your network lag before splitting queries.
 
 **In the past, network latency made multiple small queries expensive. Today, network latency is much lower. The tradeoff has changed.**
