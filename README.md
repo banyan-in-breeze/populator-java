@@ -559,7 +559,7 @@ private List<Member> localFindMembersByIds(Collection<Integer> ids) { ... }
 
 The best practice is to encapsulate `BatchFinder` directly inside your repository. If you use Spring Data JDBC/JPA's Repository interface to implement the finders, you can add an "interface default" function for `findMembersByIds()`, while `localFindMembersByIds()` is your actual data access function annotated with `@Query`. This keeps your `Populator` chains completely clean.
 
-## Immutable, Mutable, and Semi-mutable Model Classes
+## Model Class Types: Immutable, Mutable, Semi-mutable, Entity
 
 Populator can stitch together both immutable and mutable parents and children. The key is the setter parameter passed to `populateOne()`, `populateMany()`, `PopulateParams.ofOne()`, or `PopulateParams.ofMany()`.
 
@@ -597,6 +597,12 @@ For added protection from unwanted changes outside your data layer, make the set
 #### Memory Usage Considerations
 For high-throughput production systems, using semi-mutable or mutable data models is highly recommended. It uses much less memory and runs faster because it prevents heavy object copying and constant garbage collection cleanups during deep nesting runs.
 
+#### Entity Class
+
+In the team-member example, if you map the SQL result to a `Team` object with Spring Data JPA / JDBC, you’ll need to leave the `members` field untouched during mapping. For example, mark it with `@Transient` if `Team` is an entity, or create a constructor that excludes members for projections.
+
+For other data-access frameworks, there are different ways to do the same thing.
+
 ## Performance Analysis
 
 Performance is a complicated question with many moving variables.
@@ -610,6 +616,8 @@ Performance is a complicated question with many moving variables.
 Let's look at the two biggest variables:
 * **Roundtrips to the database**
 * **Amount of data fetched**
+
+**Case #1**
 
 Assume you want to fetch **10 teams** that have a total of **100 members** (an average of 10 members per team). 
 
@@ -626,6 +634,8 @@ The multiple-small-query approach needs **1 extra network trip**, but it cuts th
 
 **Note**: *Data item sizes differ from table to table. The comparison illustrates relative growth and duplication trends, not exact byte counts.*
 
+**Case #2**
+
 What happens if the dataset grows to **100 teams** and **1,000 members**?
 
 * **The Multiple-Small-Query Approach:**
@@ -636,6 +646,8 @@ What happens if the dataset grows to **100 teams** and **1,000 members**?
   * **Data Fetched:** 2,000 data items = 1,000 team records (duplicated inside 1,000 joined rows) + 1,000 member records.
 
 The multiple-small-query approach still needs **1 extra network trip**, but it cuts the total amount of data by **900 data items (nearly 50%)**.
+
+**Case #3**
 
 Let's add a third level: each member has 1 of 10 possible professional titles.
 
@@ -648,11 +660,24 @@ Let's add a third level: each member has 1 of 10 possible professional titles.
 
 Now, the multiple-small-query approach needs **2 extra trips**, but it reduces the total amount of data by **1,890 data items (nearly 63%)**.
 
+**Case #4**
+
+The other end of the spectrum: you only fetch **1 team**, populate it with **1 manager** and **1 latest project**.
+
+* **The Multiple-Small-Query Approach:**
+  * **Roundtrips:** 3 trips (one for team, one for manager, one for project).
+  * **Data Fetched:** 3 data items = 1 team + 1 manager + 1 project
+* **The Single-Query Approach (JOIN):**
+  * **Roundtrips:** 1 trip.
+  * **Data Fetched:** 3 data items =  = 1 team + 1 manager + 1 project
+
+Now multiple-small-query approach needs **2 extra trips** to fetch **about the same amount of data** as single-query approach.
+
 ### 2. Trends and Trade-offs
 
 To summarize the trade-off:
-* The **multiple-small-query** approach takes more roundtrips but fetches significantly less data.
-* The **single-query approach** takes fewer roundtrips but fetches a much heavier, duplicate-filled dataset.
+* The **multiple-small-query** approach takes more roundtrips, fetches from equal amount to significantly smaller amount of data.
+* The **single-query approach** takes fewer roundtrips, fetches from equal amount to significantly larger amount of data.
 
 With the single-query approach, data volume increases **fast** as the following 3 values increase:
 * The number of nesting levels (table joins).
@@ -674,7 +699,6 @@ With the multiple-small-query approach, the number of roundtrips increases **slo
 **Additional Facts:**
 * Multiple small queries rely on simple lookups, typically by primary key (`WHERE ID IN (?)`), which databases execute efficiently.
 * Complex JOIN execution typically requires more database work than simple primary-key or indexed lookups, especially as the number of joined relationships grows. And when a centralized DB hits its hardware limit, scaling vertically gets expensive fast.
-* Most SQL JOINs are one-to-many or many-to-one, which inevitably duplicates data. True one-to-one JOINs are rare because that data is usually stored in a single table. So the multiple-small-query approach can vastly reduce amount of data across the system.
 
 **Two Factors We Ignore Here:**
 1. **Indexing:** We assume proper indexing, so both approaches execute efficiently on key columns.
