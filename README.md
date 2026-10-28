@@ -64,7 +64,7 @@ More than a problem solver, it can be an **application-wide strategy** that keep
 - [Building Blocks from Any Data Source](#building-blocks-from-any-data-source)
 - [Populate in Parallel](#populate-in-parallel)
 - [Use `BatchFinder` to Find Data in Batches](#use-batchfinder-to-find-data-in-batches)
-- [Immutable, Mutable, and Semi-mutable Model Classes](#immutable-mutable-and-semi-mutable-model-classes)
+- [Model Class Types: Immutable, Mutable, Semi-mutable, Entity](#model-class-types-immutable-mutable-semi-mutable-entity)
 - [Performance Analysis](#performance-analysis)
 - [Use Populator as an Application-Wide Strategy](#use-populator-as-an-application-wide-strategy)
 - [Helpful Tips](#helpful-tips)
