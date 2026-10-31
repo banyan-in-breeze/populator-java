@@ -9,6 +9,7 @@ package banyaninbreeze.populator;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -28,12 +29,12 @@ public class Populator<P> {
     private static volatile ExecutorService globalExecutorService = Executors.newCachedThreadPool();
     
     private final ExecutorService executorService;
-    private Collection<P> parents;
-    private List<PopulateParams<P, ?, ?>> paramsList;
+    private final List<P> parents;
+    private final List<ChildHandler<P>> childHandlers;
     
     private Populator(ExecutorService executorService, Collection<P> parents) {
-        this.parents = parents;
-        this.paramsList = new ArrayList<>();
+        this.parents = parents == null ? null : Collections.unmodifiableList(new ArrayList<>(parents));
+        this.childHandlers = new ArrayList<>();
         this.executorService = executorService;
     }
 
@@ -41,13 +42,10 @@ public class Populator<P> {
      * Updates the global executor service used by all Populator instances by default.
      * Use this at application startup to configure custom thread pools or upgrade to virtual threads.
      *
-     * @param executorService The non-null custom ExecutorService to use globally.
-     * @throws IllegalArgumentException if the provided executor service is null.
+     * @param executorService The custom ExecutorService to use globally.
+     *        If null, the population will be always sequential even if calling runParallel() or runWithMode(true).
      */
     public static void setGlobalExecutorService(ExecutorService executorService) {
-        if (executorService == null) {
-            throw new IllegalArgumentException("Global executor service cannot be null");
-        }
         Populator.globalExecutorService = executorService;
     }
 
@@ -139,8 +137,8 @@ public class Populator<P> {
      * @param <ID>               The unique connecting key field type.
      * @param objects            The root source data collection to scan.
      * @param idGetter           Lambda rule to extract the connecting identifier key from a source object.
-     * @param assocObjectsfinder Lambda repository rule that accepts a Set of keys and returns matching target models.
-     * @return A clean List of successfully found associated target items.
+     * @param assocObjectsfinder Lambda repository rule that accepts a Collection of keys and returns matching target models.
+     * @return A List of successfully found associated target items.
      */
     public static <T, U, ID> List<U> findAssociatedObjects(
             Collection<T> objects,
@@ -153,7 +151,12 @@ public class Populator<P> {
                 .map(o -> idGetter.apply(o))
                 .filter(id -> id != null)
                 .collect(Collectors.toSet());
-        return ids.isEmpty() ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(assocObjectsfinder.apply(ids)));
+        if (ids.isEmpty())
+            return Collections.emptyList();
+        else {
+            Collection<U> objs = assocObjectsfinder.apply(ids);
+            return objs == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(objs));
+        }
     }
     
     /**
@@ -170,13 +173,16 @@ public class Populator<P> {
      * @return a map mapping the extracted keys to their corresponding elements, or an empty map if the collection is null
      */
     public static <T, ID> Map<ID, T> collectionToMapOne(Collection<T> collection, Function<T, ID> idGetter) {
-        Map<ID, T> map;
-        if (collection == null)
-            map = Collections.emptyMap();
-        else 
-            map = collection.stream()
-                    .filter(e -> idGetter.apply(e) != null)
-                    .collect(Collectors.toMap(idGetter::apply, e -> e, (e1, e2) -> e1));
+        Map<ID, T> map = new HashMap<>();
+
+        if (collection != null) {
+            for (T item : collection) {
+                ID id = idGetter.apply(item);
+                if (id != null) {
+                    map.putIfAbsent(id, item);
+                }
+            }
+        }
         return map;
     }
 
@@ -193,13 +199,15 @@ public class Populator<P> {
      * @return a map where each extracted key maps to a list of elements sharing that key, or an empty map if the collection is null
      */
     public static <T, ID> Map<ID, List<T>> collectionToMapMany(Collection<T> collection, Function<T, ID> idGetter) {
-        Map<ID, List<T>> map;
-        if (collection == null)
-            map = Collections.emptyMap();
-        else 
-            map = collection.stream()
-                    .filter(e -> idGetter.apply(e) != null)
-                    .collect(Collectors.groupingBy(idGetter::apply));
+        Map<ID, List<T>> map = new HashMap<>();
+        if (collection != null) {
+            for (T item : collection) {
+                ID id = idGetter.apply(item);
+                if (id != null) {
+                    map.computeIfAbsent(id, k -> new ArrayList<>()).add(item);
+                }
+            }
+        }
         return map;
     }
 
@@ -237,7 +245,7 @@ public class Populator<P> {
      */
     public <C, ID> Populator<P> populate(PopulateParams<P, C, ID> params) {
         if (params != null)
-            this.paramsList.add(params);
+            this.childHandlers.add(new ChildHandlerImpl<P, C, ID>(params));
         return this;
     }
     
@@ -282,63 +290,75 @@ public class Populator<P> {
     }
     
     /**
-     * Runs all registered population rules sequentially on the main executing calling thread.
-     * 
-     * <p>This method acts as a convenience shortcut that routes execution directly to 
-     * {@link #runWithMode(boolean)} with the parallel flag set to {@code false}.</p>
+     * Executes all registered population rules sequentially on the calling thread.
      *
-     * @return An unmodifiable {@link List} containing the processed and fully populated 
-     *         Parent objects, or null if the initial input parents collection was null.
+     * <p>For each rule, the associated children are fetched and then assigned
+     * to their corresponding parents. Population rules are processed in the
+     * order in which they were registered.</p>
+     *
+     * @return An unmodifiable list of populated parent objects, or {@code null}
+     *         if the original parent collection was {@code null}.
      */
     public List<P> run() {
         return this.runWithMode(false);
     }
     
     /**
-     * Runs all registered population rules asynchronously using separate threads.
-     * Greatly reduces total latency when gathering independent deep relationship trees concurrently.
-     * 
-     * <p>This method acts as a convenience shortcut that routes execution directly to 
-     * {@link #runWithMode(boolean)} with the parallel flag set to {@code true}. It leverages 
-     * the global or locally injected {@link ExecutorService} service to manage the asynchronous worker threads.</p>
+     * Executes independent child-fetching operations concurrently using the
+     * configured {@link ExecutorService}. Once all fetch operations complete,
+     * the results are assigned to their corresponding parents sequentially.
      *
-     * @return An unmodifiable {@link List} containing the processed and fully populated 
-     *         Parent objects, or null if the initial input parents collection was null.
+     * <p>If no executor is configured, or only one population rule is registered,
+     * this method executes sequentially.</p>
+     *
+     * <p>This method blocks until the entire population process is complete.</p>
+     *
+     * @return An unmodifiable list of populated parent objects, or {@code null}
+     *         if the original parent collection was {@code null}.
      */
     public List<P> runParallel() {
         return this.runWithMode(true);
     }
-    
+
     /**
-     * Executes all registered configuration mapping rules on the parent collection 
-     * using the specified concurrency model workflow execution engine.
-     * 
-     * <p>This method automatically applies optimizations: if only a single population rule 
-     * is registered, it bypasses parallel thread allocation entirely to minimize system overhead. 
-     * It also safely guards against null or empty input collections by immediately returning 
-     * an unmodifiable list fallback state or null.</p>
+     * Executes all registered population rules using the specified execution mode.
      *
-     * @param parallel True to execute independent mapping chains concurrently using the global 
-     *                 or locally injected ExecutorService; false to process all rules sequentially.
-     * @return An unmodifiable {@link List} containing the processed and fully populated 
-     *         Parent objects, or null if the initial input parents collection was null.
+     * <p>When {@code parallel} is {@code false}, child-fetching operations are
+     * executed sequentially on the calling thread. When {@code true}, independent
+     * child-fetching operations are executed concurrently using the configured
+     * {@link ExecutorService}, if available.</p>
+     *
+     * <p>After all child-fetching operations have completed, the retrieved
+     * children are assigned to their corresponding parents sequentially,
+     * preserving the registration order of the population rules.</p>
+     *
+     * <p>If no {@link ExecutorService} is configured, execution is sequential
+     * regardless of the value of {@code parallel}. A single population rule
+     * is also executed sequentially to avoid unnecessary thread overhead.</p>
+     *
+     * @param parallel {@code true} to execute independent child-fetching
+     *                 operations concurrently when an executor is available;
+     *                 {@code false} to execute them sequentially.
+     * @return An unmodifiable list of populated parent objects, or {@code null}
+     *         if the original parent collection was {@code null}.
      */
     public List<P> runWithMode(boolean parallel) {
-        if (this.parents == null || this.parents.isEmpty() || paramsList.isEmpty())
-            return this.parents == null ? null : Collections.unmodifiableList(new ArrayList<>(this.parents));
+        if (this.parents == null || this.parents.isEmpty() || this.childHandlers.isEmpty())
+            return this.parents == null ? null : this.parents;
         
-        this.findAllChildren(this.parents, paramsList, parallel);
-        return populateParentsWithAllChildren(this.parents, paramsList);
+        this.findAllChildren(this.parents, this.childHandlers, parallel);
+        List<P> results = populateParentsWithAllChildren(this.parents, this.childHandlers);
+        return Collections.unmodifiableList(results);
     }
     
-    private void findAllChildren(Collection<P> parents, List<PopulateParams<P, ?, ?>> paramsList, boolean parallel) {
-        if (!parallel || paramsList.size() == 1) {
-            for (PopulateParams<P, ?, ?> params : paramsList)
-                this.findChildren(parents, params);
+    private void findAllChildren(List<P> parents, List<ChildHandler<P>> childHandlers, boolean parallel) {
+        if (!parallel || executorService == null || childHandlers.size() == 1) {
+            for (ChildHandler<P> childHandler : childHandlers)
+                childHandler.findChildren(parents);
         } else {
-            List<CompletableFuture<Void>> futures = paramsList.stream()
-                    .map(params -> CompletableFuture.runAsync(
-                            () -> this.findChildren(parents, params),
+            List<CompletableFuture<Void>> futures = childHandlers.stream()
+                    .map(childHandler -> CompletableFuture.runAsync(
+                            () -> childHandler.findChildren(parents),
                             executorService
                         )
                     )
@@ -348,44 +368,12 @@ public class Populator<P> {
         
     }
 
-    private <C, ID> void findChildren(Collection<P> parents, PopulateParams<P, C, ID> params) {
-        params.setChildren(findAssociatedObjects(parents, params.getParentIdGetter(), params.getChildFinder()));
-    }
-
-    private List<P> populateParentsWithAllChildren(Collection<P> parents, List<PopulateParams<P, ?, ?>> paramsList) {
-        List<P> result = Collections.unmodifiableList(new ArrayList<>(parents));
-        for (PopulateParams<P, ?, ?> params : paramsList) {
-            result = populateParentsWithChildren(result, params);
+    private List<P> populateParentsWithAllChildren(List<P> parents, List<ChildHandler<P>> childHandlers) {
+        List<P> result = parents;
+        for (ChildHandler<P> childHandler : childHandlers) {
+            result = childHandler.assignToParents(result);
         }
         return result;
-    }
-
-    private <C, ID> List<P> populateParentsWithChildren(List<P> parents, PopulateParams<P, C, ID> params) {
-        if (params.getParentOneChildSetter() != null) {
-            Map<ID, C> childMap = collectionToMapOne(params.getChildren(), params.getChildIdGetter());
-            ArrayList<P> result = new ArrayList<P>();
-            parents.forEach(p -> {
-                ID parentId = params.getParentIdGetter().apply(p);
-                if (parentId != null) {
-                    result.add(params.parentOneChildSetter.apply(p, childMap.get(parentId)));
-                } else {
-                    result.add(p);
-                }
-            });
-            return Collections.unmodifiableList(result);
-        } else {
-            Map<ID, List<C>> childMap = collectionToMapMany(params.getChildren(), params.getChildIdGetter());
-            ArrayList<P> result = new ArrayList<P>();
-            parents.forEach(p -> {
-                ID parentId = params.getParentIdGetter().apply(p);
-                if (parentId != null) {
-                    result.add(params.parentManyChildSetter.apply(p, childMap.getOrDefault(parentId, Collections.emptyList())));
-                } else {
-                    result.add(p);
-                }
-            });
-            return Collections.unmodifiableList(result);
-        }
     }
 
     /**
@@ -401,13 +389,11 @@ public class Populator<P> {
      * @param <ID> The unique identifier key field type used to join Parent and Child records.
      */
     public static class PopulateParams<P, C, ID> {
-        private Function<P, ID> parentIdGetter;
-        private Function<C, ID> childIdGetter;
-        private Function<Collection<ID>, Collection<C>> childFinder;
-        private BiFunction<P, C, P> parentOneChildSetter;
-        private BiFunction<P, List<C>, P> parentManyChildSetter;
-
-        private Collection<C> children;
+        private final Function<P, ID> parentIdGetter;
+        private final Function<C, ID> childIdGetter;
+        private final Function<Collection<ID>, Collection<C>> childFinder;
+        private final BiFunction<P, C, P> parentOneChildSetter;
+        private final BiFunction<P, List<C>, P> parentManyChildSetter;
         
         private PopulateParams(
                 Function<P, ID> parentIdGetter,
@@ -416,17 +402,15 @@ public class Populator<P> {
                 BiFunction<P, C, P> parentOneChildSetter,
                 BiFunction<P, List<C>, P> parentManyChildSetter
         ) {
-            super();
             this.parentIdGetter = parentIdGetter;
             this.childIdGetter = childIdGetter;
             this.childFinder = childFinder;
             this.parentOneChildSetter = parentOneChildSetter;
             this.parentManyChildSetter = parentManyChildSetter;
-            this.children = null;
         }
         
         /**
-         * Factory builder helper to configure a strict One-to-One single child model relationship mapping config rule.
+         * Factory builder helper to configure a One-to-One single child model relationship mapping config rule.
          *
          * @param <P>                  The Parent model object type.
          * @param <C>                  The Child object model type.
@@ -447,7 +431,7 @@ public class Populator<P> {
         }
         
         /**
-         * Factory builder helper to configure a strict One-to-Many lists of children relationship mapping config rule.
+         * Factory builder helper to configure a One-to-Many lists of children relationship mapping config rule.
          *
          * @param <P>                   The Parent model object type.
          * @param <C>                   The Child object model type.
@@ -486,14 +470,6 @@ public class Populator<P> {
         public BiFunction<P, List<C>, P> getParentManyChildSetter() {
             return parentManyChildSetter;
         }
-
-        private Collection<C> getChildren() {
-            return children;
-        }
-
-        private void setChildren(Collection<C> children) {
-            this.children = children;
-        }
     }
     
     /**
@@ -507,7 +483,7 @@ public class Populator<P> {
      *
      * @param <C> The Child collection list data element class type being transformed.
      */
-    public static interface ChildModifier<C> {
+    public interface ChildModifier<C> {
         /**
          * Returns a modifier that performs no operation on the incoming children list.
          * 
@@ -530,5 +506,51 @@ public class Populator<P> {
          * @return The finalized, fully populated List of data elements to be mapped onto the parent data graph.
          */
         List<C> modify(List<C> children);
+    }
+
+    private interface ChildHandler<P> {
+        void findChildren(List<P> parents);
+        List<P> assignToParents(List<P> parents);
+    }
+
+    private static class ChildHandlerImpl<P, C, ID> implements ChildHandler<P> {
+        private final PopulateParams<P, C, ID> params;
+        private Collection<C> children;
+
+        public ChildHandlerImpl(PopulateParams<P, C, ID> params) {
+            this.params = params;
+        }
+
+        public void findChildren(List<P> parents) {
+            this.children = findAssociatedObjects(parents, params.getParentIdGetter(), params.getChildFinder());
+        }
+        
+        public List<P> assignToParents(List<P> parents) {
+            if (params.getParentOneChildSetter() != null) {
+                Map<ID, C> childMap = collectionToMapOne(children, params.getChildIdGetter());
+                ArrayList<P> result = new ArrayList<P>();
+                parents.forEach(p -> {
+                    ID parentId = params.getParentIdGetter().apply(p);
+                    if (parentId != null) {
+                        result.add(params.parentOneChildSetter.apply(p, childMap.get(parentId)));
+                    } else {
+                        result.add(p);
+                    }
+                });
+                return result;
+            } else {
+                Map<ID, List<C>> childMap = collectionToMapMany(children, params.getChildIdGetter());
+                ArrayList<P> result = new ArrayList<P>();
+                parents.forEach(p -> {
+                    ID parentId = params.getParentIdGetter().apply(p);
+                    if (parentId != null) {
+                        result.add(params.parentManyChildSetter.apply(p, childMap.getOrDefault(parentId, Collections.emptyList())));
+                    } else {
+                        result.add(p);
+                    }
+                });
+                return result;
+            }
+        }
     }
 }
