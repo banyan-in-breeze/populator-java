@@ -32,10 +32,6 @@ public class Demo3Parallel {
         var demo = new Demo3Parallel();
         demo.showcaseCompare();
         demo.showcaseCustomExecutorAndMode();
-
-        // Shutdown executor service to prevent the threads from holding up the app
-        Populator.getGlobalExecutorService().shutdown();
-
         demo.showcaseForceSequential();
     }
 
@@ -92,22 +88,23 @@ public class Demo3Parallel {
     /******************************************************************************************
      * Showcase: Force all population to be sequential even for runParallel().
      * In case of testing, debugging or limited resources (like CPU), we may want to force all
-     * runParallel() to be sequential in an app. Change Populator's global executor service to
-     * SameThreadExecutorService, then all runParallel() or runWithMode(true) will sequentially
-     * run population on the current thread just like run().
+     * runParallel() to be sequential in an app.
+     * Set Populator's global executor service to null, then all runParallel() or runWithMode(true)
+     * will sequentially run population on the current thread just like run().
      * This way you don't need to change runParallel() to run() in your code.
      *****************************************************************************************/
     public void showcaseForceSequential() {
         long startTime;
         List<Team> teams;
 
-        // Replace the global executor service so that all runParallel() become sequential
-        Populator.setGlobalExecutorService(new SameThreadExecutorService());
+        // Shutdown existing executor service to prevent the threads from holding up the app
+        // Then set the global executor service to be null so that all runParallel() become sequential
+        Populator.getGlobalExecutorService().shutdown();
+        Populator.setGlobalExecutorService(null);
 
-        // Parallel with "same thread executor service"
         startTime = System.currentTimeMillis();
         teams = testParallel();
-        System.out.println("Parallel with same thread executor service - time elapsed: "
+        System.out.println("Parallel with null global executor service - time elapsed: "
                          + (System.currentTimeMillis() - startTime) + " ms");
         printResult(teams);
     }
