@@ -520,11 +520,13 @@ Alternatively, call `runWithMode(boolean parallel)` to switch between sequential
 
 When you call `runParallel()`, Populator fetches all child datasets concurrently. After all fetches complete, it stitches the children into their parents one by one.This two-phase design is important for immutable parents that use `withXxx(child)` methods. It ensures no child data is lost when multiple children are set.
 
+#### Default Thread Pool
+
+By default, `Populator` uses `Executors.newCachedThreadPool()` as its global thread pool. It avoids the fixed-pool starvation problem in nested parallel execution (see below), but its thread count is unbounded. You can change it with a static setter.
+
 #### Using a Virtual Thread Pool with Java 21+
 
-By default, `Populator` uses `Executors.newCachedThreadPool()` as its global thread pool. You can change it with a static setter.
-
-On Java 21 or higher, it's recommended to switch to a virtual thread pool. Virtual threads don't block OS threads, so they give better throughput for network I/O and help avoid thread-starvation deadlocks in nested parallel runs.
+On Java 21 or higher, it's recommended to switch to a virtual thread pool. Virtual threads are lightweight and don't occupy OS threads while blocked, making them particularly suitable for network I/O and helping avoid thread-starvation deadlocks in nested parallel runs.
 
 Add this to your application startup:
 ```java
@@ -533,7 +535,7 @@ Populator.setGlobalExecutorService(Executors.newVirtualThreadPerTaskExecutor());
 
 #### Avoiding Thread-Starvation Deadlock
 
-`Populator`'s default thread pool will not cause thread-starvation deadlock.
+`Populator`'s default cached thread pool avoids the thread-starvation deadlock scenario described below.
 
 But if you replace the default pool with a fixed-size pool, you can get a deadlock when you call `runParallel()` at multiple nested levels. For example, outer tasks can block waiting for inner tasks, while all threads in the pool are already in use.
 
