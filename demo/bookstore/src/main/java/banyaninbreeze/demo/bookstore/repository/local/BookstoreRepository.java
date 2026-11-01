@@ -15,6 +15,7 @@ import banyaninbreeze.demo.bookstore.repository.local.BookstoreModel.BookDetails
 import banyaninbreeze.demo.bookstore.repository.local.BookstoreModel.BookSubject;
 import banyaninbreeze.demo.bookstore.repository.local.BookstoreModel.Subject;
 import banyaninbreeze.demo.bookstore.repository.local.BookstoreModel.SubjectAuthor;
+import banyaninbreeze.demo.bookstore.repository.local.BookstoreModel.SubjectBookCount;
 import banyaninbreeze.demo.bookstore.sampledata.SampleDatabase;
 import banyaninbreeze.demo.bookstore.sampledata.SampleDatabase.AuthorRow;
 import banyaninbreeze.demo.bookstore.sampledata.SampleDatabase.BookAuthorRow;
@@ -254,6 +255,21 @@ public class BookstoreRepository {
         return SampleDatabase.BOOK_SUBJECT_TABLE_DATA.stream()
                 .filter(bookSubjectRow -> subjectIds.contains(bookSubjectRow.subjectId()))
                 .map(this::bookSubjectFromRow)
+                .toList();
+    }
+
+    /**
+     * simulate query:
+     * SELECT subject_id, COUNT(book_id) AS book_count
+     * FROM book_subject
+     * WHERE subject_id IN (:subjectIds) GROUP BY subject_id
+     */
+    public List<SubjectBookCount> findSubjectBookCountsBySubjectIds(Collection<String> subjectIds) {
+        return SampleDatabase.BOOK_SUBJECT_TABLE_DATA.stream()
+                .filter(bookSubjectRow -> subjectIds.contains(bookSubjectRow.subjectId()))
+                .collect(Collectors.groupingBy(BookSubjectRow::subjectId, Collectors.counting()))
+                .entrySet().stream()
+                .map(entry -> new SubjectBookCount(entry.getKey(), entry.getValue().intValue()))
                 .toList();
     }
 

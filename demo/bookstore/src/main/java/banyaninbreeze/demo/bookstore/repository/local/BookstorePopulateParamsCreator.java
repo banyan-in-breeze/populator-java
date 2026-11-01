@@ -7,6 +7,7 @@ import banyaninbreeze.demo.bookstore.repository.local.BookstoreModel.BookDetails
 import banyaninbreeze.demo.bookstore.repository.local.BookstoreModel.BookSubject;
 import banyaninbreeze.demo.bookstore.repository.local.BookstoreModel.Subject;
 import banyaninbreeze.demo.bookstore.repository.local.BookstoreModel.SubjectAuthor;
+import banyaninbreeze.demo.bookstore.repository.local.BookstoreModel.SubjectBookCount;
 import banyaninbreeze.demo.bookstore.repository.remote.BookUserRatingClient;
 import banyaninbreeze.demo.bookstore.repository.remote.BookUserRatingClient.BookUserRating;
 import banyaninbreeze.populator.Populator.ChildModifier;
@@ -123,6 +124,15 @@ public class BookstorePopulateParamsCreator {
             Author::getId,
             bookstoreRepo::findAuthorsByIds,
             SubjectAuthor::setAuthor
+        );
+    }
+
+    public PopulateParams<Subject, SubjectBookCount, String> subjectWithSubjectBookCounts() {
+        return PopulateParams.<Subject, SubjectBookCount, String>ofOne(
+            Subject::getId,
+            SubjectBookCount::getSubjectId,
+            bookstoreRepo::findSubjectBookCountsBySubjectIds,
+            Subject::setSubjectBookCount
         );
     }
 

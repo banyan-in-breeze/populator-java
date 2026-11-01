@@ -43,15 +43,15 @@ public class BookstoreDtos {
         }
     }
 
-    public static record SubjectAuthorsDto(SubjectDto subject, List<AuthorDto> authors) {
+    public static record SubjectAuthorsDto(SubjectDto subject, List<AuthorDto> authors, int bookCount) {
         public static SubjectAuthorsDto from(Subject subject) {
             return new SubjectAuthorsDto(
                         SubjectDto.from(subject),
                         subject.getSubjectAuthors().stream()
                             .map(subjectAuthor -> AuthorDto.from(subjectAuthor.getAuthor()))
-                            .toList()
+                            .toList(),
+                        subject.getSubjectBookCount() == null ? 0 : subject.getSubjectBookCount().getBookCount()
                     );
-
         }
     }
     

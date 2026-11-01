@@ -150,6 +150,7 @@ public class BookstoreModel {
         // References to child objects, optional
         private List<BookSubject> bookSubjects;
         private List<SubjectAuthor> subjectAuthors;
+        private SubjectBookCount subjectBookCount;
 
         public Subject(String id, String name) {
             this.id = id;
@@ -160,6 +161,7 @@ public class BookstoreModel {
         public String getName() { return name; }
         public List<BookSubject> getBookSubjects() { return bookSubjects; }
         public List<SubjectAuthor> getSubjectAuthors() { return subjectAuthors; }
+        public SubjectBookCount getSubjectBookCount() { return subjectBookCount; }
 
         protected Subject setBookSubjects(List<BookSubject> bookSubjects) {
             this.bookSubjects = bookSubjects;
@@ -168,6 +170,11 @@ public class BookstoreModel {
 
         protected Subject setSubjectAuthors(List<SubjectAuthor> subjectAuthors) {
             this.subjectAuthors = subjectAuthors;
+            return this;
+        }
+
+        protected Subject setSubjectBookCount(SubjectBookCount subjectBookCount) {
+            this.subjectBookCount = subjectBookCount;
             return this;
         }
     }
@@ -229,5 +236,18 @@ public class BookstoreModel {
             this.subject = subject;
             return this;
         }
+    }
+
+    public static class SubjectBookCount {
+        private final String subjectId;
+        private final int bookCount;
+
+        public SubjectBookCount(String subjectId, int bookCount) {
+            this.subjectId = subjectId;
+            this.bookCount = bookCount;
+        }
+
+        public String getSubjectId() { return subjectId; }
+        public int getBookCount() { return bookCount; }
     }
 }

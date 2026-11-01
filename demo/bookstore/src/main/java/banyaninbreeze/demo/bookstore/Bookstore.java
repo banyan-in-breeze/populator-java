@@ -3,7 +3,6 @@ package banyaninbreeze.demo.bookstore;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Scanner;
-import java.util.concurrent.Executors;
 
 import banyaninbreeze.demo.bookstore.service.BookstoreDtos.AuthorBooksDto;
 import banyaninbreeze.demo.bookstore.service.BookstoreDtos.AuthorDto;
@@ -25,7 +24,7 @@ public class Bookstore {
         //    to 21 or higher
         // 2. Uncomment the line of code below.
         // =========================================================================
-        // Populator.setGlobalExecutorService(Executors.newVirtualThreadPerTaskExecutor());
+        // Populator.setGlobalExecutorService(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
     }
 
     public static void main(String[] args) {
@@ -124,8 +123,10 @@ public class Bookstore {
     private static void printSubjectAuthors(List<SubjectAuthorsDto> subjectAuthorsList) {
         subjectAuthorsList.forEach(subjectAuthors -> {
             printLine("Subject: " + subjectToString(subjectAuthors.subject()));
+            printLine("  Book Count: " + subjectAuthors.bookCount());
+            printLine("  Authors: ");
             subjectAuthors.authors().forEach(author -> {
-                printLine("  " + authorToString(author));
+                printLine("    " + authorToString(author));
             });
             printLine("");
         });

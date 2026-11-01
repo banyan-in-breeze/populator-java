@@ -128,6 +128,7 @@ public class BookstoreService {
                         .populate(popParamsCreator.subjectAuthorWithAuthor())
                         .run()
                 ))
+                .populate(popParamsCreator.subjectWithSubjectBookCounts())
                 .run();
         return subjects.stream().map(SubjectAuthorsDto::from).toList();
     }
