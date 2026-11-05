@@ -1,6 +1,10 @@
 # Populator
 
-**A small but powerful Java util that works with any framework (Spring JPA, JDBC, jOOQ, MyBatis) and/or remote APIs to build complex object structures.**
+**A small but powerful Java utility for building complex object graphs from multiple data sources, including Spring Data JPA, JDBC, jOOQ, MyBatis, and remote APIs. Ideal for AI coding agents.**
+
+Read the JavaRevisited article for a quick introduction:
+
+https://medium.com/javarevisited/a-simple-java-solution-to-complex-one-to-many-orm-problems-ee7d203eb009
 
 When building Java APIs, we often need to fetch and map data with multiple one-to-many or many-to-one like this:
 
