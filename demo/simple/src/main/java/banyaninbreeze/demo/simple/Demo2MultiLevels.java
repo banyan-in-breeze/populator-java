@@ -31,21 +31,21 @@ public class Demo2MultiLevels {
     public void showcaseAllInOnePlace() {
         List<Team> teams = findAllTeams();
         teams = Populator.of(teams)
-            .populateOne(Team::id, Manager::teamId, this::findManagersByTeamIds, Team::withManager)
+            .populateOne(Team::id, Manager::teamId, Team::withManager, this::findManagersByTeamIds)
             .populateMany(
                 Team::id,
                 Member::teamId,
+                Team::withMembers,
                 teamIds -> {
                     // KEY STRATEGY:
                     // Fetch children, then immediately populate their sub-children inline
                     var members = this.findMembersByTeamIds(teamIds);
                     return Populator.of(members)
-                        .populateOne(Member::titleId, Title::id, this::findTitlesByIds, Member::withTitle)
-                        .populateMany(Member::employeeId, ContactMethod::employeeId,
-                                        this::findContactMethodsByEmployeeIds, Member::withContactMethods)
+                        .populateOne(Member::titleId, Title::id, Member::withTitle, this::findTitlesByIds)
+                        .populateMany(Member::employeeId, ContactMethod::employeeId, Member::withContactMethods,
+                                        this::findContactMethodsByEmployeeIds)
                         .run();
-                },
-                Team::withMembers
+                }
             )
             .run();
 
@@ -80,8 +80,8 @@ public class Demo2MultiLevels {
         return PopulateParams.<Team, Manager, Integer>ofOne(
                     Team::id,
                     Manager::teamId,
-                    this::findManagersByTeamIds,
-                    Team::withManager
+                    Team::withManager,
+                    this::findManagersByTeamIds
                 );
     }
 
@@ -92,8 +92,8 @@ public class Demo2MultiLevels {
         return PopulateParams.<Team, Member, Integer>ofMany(
                     Team::id,
                     Member::teamId,
-                    teamIds -> childModifier.modify(this.findMembersByTeamIds(teamIds)),
-                    Team::withMembers
+                    Team::withMembers,
+                    teamIds -> childModifier.modify(this.findMembersByTeamIds(teamIds))
                 );
     }
 
@@ -102,8 +102,8 @@ public class Demo2MultiLevels {
         return PopulateParams.<Member, Title, Integer>ofOne(
                     Member::titleId,
                     Title::id,
-                    this::findTitlesByIds,
-                    Member::withTitle
+                    Member::withTitle,
+                    this::findTitlesByIds
                 );
     }
 
@@ -112,8 +112,8 @@ public class Demo2MultiLevels {
         return PopulateParams.<Member, ContactMethod, String>ofMany(
                     Member::employeeId,
                     ContactMethod::employeeId,
-                    this::findContactMethodsByEmployeeIds,
-                    Member::withContactMethods
+                    Member::withContactMethods,
+                    this::findContactMethodsByEmployeeIds
                 );
     }
 

@@ -32,16 +32,16 @@ public class Demo4Mutable {
                         teams,
                         Team::getId,
                         Manager::teamId,
-                        this::findManagersByTeamIds,
-                        Team::setManager // <- use setter which returns "this"
+                        Team::setManager, // <- use setter which returns "this"
+                        this::findManagersByTeamIds
                     );
         teams = Populator.<Team, Member, Integer>populateMany(
                         teams,
                         Team::getId,
                         Member::teamId,
-                        this::findMembersByTeamIds,
                         // In case you cannot make the setter return "this", do this:
-                        (team, members) -> { team.setMembers(members); return team; }
+                        (team, members) -> { team.setMembers(members); return team; },
+                        this::findMembersByTeamIds
                     );
 
         printResult("Use mutable model classes", teams);

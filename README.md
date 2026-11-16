@@ -1,6 +1,10 @@
 # Populator
 
-**A small but powerful Java util that works with any framework (Spring JPA, JDBC, jOOQ, MyBatis) and/or remote APIs to build complex object structures.**
+**A small but powerful Java utility for building complex object graphs from multiple data sources, including Spring Data JPA, JDBC, jOOQ, MyBatis, and remote APIs. Ideal for AI coding agents.**
+
+Read the JavaRevisited article for a quick introduction:
+
+https://medium.com/javarevisited/a-simple-java-solution-to-complex-one-to-many-orm-problems-ee7d203eb009
 
 When building Java APIs, we often need to fetch and map data with multiple one-to-many or many-to-one like this:
 
@@ -143,8 +147,8 @@ Use `Populator` to call them and stitch the results together:
 List<Team> findTeamsWithMembersPopulated(/* ... some criteria */) {
     List<Team> teams = findTeamsBySomeCriteria(/* ... some criteria */);
     teams = Populator.of(teams)
-            .populateMany(Team::getId, Member::getTeamId,
-                this::findMembersByTeamIds, Team::setMembers)
+            .populateMany(Team::getId, Member::getTeamId, Team::setMembers,
+                this::findMembersByTeamIds)
             .run();
     return teams; // teams now populated with members
 }
@@ -154,8 +158,8 @@ What this does:
 * Creates a Populator instance for teams
 * Calls `populateMany()` to describe how to populate teams. It takes four arguments:
   * `Team::getId` and `Member::getTeamId` - the fields that link the two types
-  * The finder method to load members by team IDs: `findMembersByTeamIds`
   * The setter that assigns members to a team
+  * The finder method to load members by team IDs: `findMembersByTeamIds`
 * Calls `run()`, which executes the whole procedure and returns teams populated with members
 
 Use `populateMany()` for one-to-many relationships. For one-to-one or many-to-one, use `populateOne()`.
@@ -201,10 +205,10 @@ Chain populate calls to populate all children:
 
 ```java
 teams = Populator.of(teams)
-        .populateOne(Team::getId, Manager::getTeamId, 
-            this::findManagersByTeamIds, Team::setManager)
-        .populateMany(Team::getId, Member::getTeamId,
-            this::findMembersByTeamIds, Team::setMembers)
+        .populateOne(Team::getId, Manager::getTeamId, Team::setManager,
+            this::findManagersByTeamIds)
+        .populateMany(Team::getId, Member::getTeamId, Team::setMembers,
+            this::findMembersByTeamIds)
         .run();
 ```
 
@@ -222,7 +226,7 @@ Do this:
 
 ```java
 teams = Populator.of(teams)
-    .populateMany(Team::getId, Member::getTeamId,
+    .populateMany(Team::getId, Member::getTeamId, Team::setMembers,
         // Instead of passing this::findMembersByTeamIds,
         // pass a lambda so that we can populate members before returning
         teamIds -> {
@@ -230,11 +234,10 @@ teams = Populator.of(teams)
             // Populate members with assignments
             return Populator.of(members)
                 .populateMany(Member::getId, Assignment::getMemberId, 
-                        this::findAssignmentsByMemberIds,
-                        Member::setAssignments)
+                        Member::setAssignments,
+                        this::findAssignmentsByMemberIds)
                 .run();
-        },
-        Team::setMembers
+        }
     )
     .run();
 ```
@@ -259,18 +262,17 @@ Combine horizontal and vertical population:
 
 ```java
 teams = Populator.of(teams)
-        .populateOne(Team::getId, Manager::getTeamId, 
-            this::findManagersByTeamIds, Team::setManager)
-        .populateMany(Team::getId, Member::getTeamId,
+        .populateOne(Team::getId, Manager::getTeamId, Team::setManager,
+            this::findManagersByTeamIds)
+        .populateMany(Team::getId, Member::getTeamId, Team::setMembers,
             teamIds -> {
                 var members = this.findMembersByTeamIds(teamIds);
                 return Populator.of(members)
                     .populateMany(Member::getId, Assignment::getMemberId, 
-                            this::findAssignmentsByMemberIds,
-                            Member::setAssignments)
+                            Member::setAssignments,
+                            this::findAssignmentsByMemberIds)
                     .run();
-            },
-            Team::setMembers)
+            })
         .run();
 ```
 
@@ -283,8 +285,8 @@ Instead of passing four separate parameters (two ID getters, one finder, and one
 ```java
 PopulateParams<Team, Member, Integer> populateParams =
     PopulateParams.ofMany(
-        Team::getId, Member::getTeamId,
-        this::findMembersByTeamIds, Team::setMembers
+        Team::getId, Member::getTeamId, Team::setMembers,
+        this::findMembersByTeamIds
     );
 
 teams = Populator.of(teams)
@@ -325,15 +327,14 @@ Team
 ```java
 PopulateParams<Team, Member, Integer> paramsTeamWithMembers(
             ChildModifier<Member> childModifier) {
-    return PopulateParams.ofMany(Team::getId, Member::getTeamId,
-        teamIds -> childModifier.modify(findMembersByTeamIds(teamIds)),
-        Team::setMembers);
+    return PopulateParams.ofMany(Team::getId, Member::getTeamId, Team::setMembers,
+        teamIds -> childModifier.modify(findMembersByTeamIds(teamIds)));
 }
 
 PopulateParams<Member, Assignment, Integer> paramsMemberWithAssignments() {
     return PopulateParams.ofMany(Member::getId, Assignment::getMemberId,
-        this::findAssignmentsByMemberIds,
-        Member::setAssignments);
+        Member::setAssignments,
+        this::findAssignmentsByMemberIds);
 }
 
 // Case A: Populate members WITH assignments
@@ -586,8 +587,8 @@ record Team(
 
 // Populate teams with members:
 teams = Populator.of(teams)
-        .populateMany(Team::id, Member::teamId, this::findMembersByTeamIds,
-                      Team::withMembers) // <-- Pass the wither
+        .populateMany(Team::id, Member::teamId, Team::withMembers, // <-- Pass the wither
+            this::findMembersByTeamIds
         .run();
 ```
 
@@ -804,8 +805,8 @@ In this example:
 
 ```java
 teams = Populator.of(teams)
-    .populateMany(Team::getId, Member::getTeamId,
-        this::findMembersByTeamIds, Team::setMembers)
+    .populateMany(Team::getId, Member::getTeamId, Team::setMembers,
+        this::findMembersByTeamIds)
     .run();
 ```
 
@@ -816,8 +817,8 @@ A traditional JavaBean setter returns `void`, so it won't work. If you can't cha
 ```java
 teams = Populator.of(teams)
     .populateMany(Team::getId, Member::getTeamId,
-        this::findMembersByTeamIds,
-        (team, members) -> { team.setMembers(members); return team; }
+        (team, members) -> { team.setMembers(members); return team; },
+        this::findMembersByTeamIds
     )
     .run();
 ```
@@ -832,10 +833,9 @@ List<Member> findMembersByTeamIds(List<Integer> teamIds)  { ... }
 
 ...
 teams = Populator.of(teams)
-    .populateMany(Team::getId, Member::getTeamId,
+    .populateMany(Team::getId, Member::getTeamId, Team::setMembers,
         // Adapt the type of teamIds
-        teamIds -> findMembersByTeamIds(new ArrayList<>(teamIds)),
-        Team::setMembers)
+        teamIds -> findMembersByTeamIds(new ArrayList<>(teamIds)))
     .run();
 ```
 
@@ -846,11 +846,11 @@ In the examples above, we use `of(parents)` to create a `Populator`, then call `
 ```java
 // Static method to populate one-to-many data
 teams = Populator.populateMany(teams, Team::getId, Member::getTeamId,
-                        this::findMembersByTeamIds, Team::setMembers);
+                        Team::setMembers, this::findMembersByTeamIds);
 
 // Static method to populate one-to-one or many-to-one data
 teams = Populator.populateOne(teams, Team::getId, Manager::getTeamId,
-                        this::findManagersByTeamIds, Team::setManager);
+                        Team::setManager, this::findManagersByTeamIds);
 
 // Static method to populate data using PopulateParams object
 teams = Populator.populate(teams, paramsTeamWithProjects(ChildModifier.none));
@@ -863,7 +863,7 @@ When you call `populateOne()`, `populateMany()`, or create a `PopulateParams` in
 ```java
 teams = Populator.of(teams)
         .<Team, Member, Integer>populateMany(Team::getId, Member::getTeamId,
-                        this::findMembersByTeamIds, Team::setMembers)
+                        Team::setMembers, this::findMembersByTeamIds)
         .run();
 ```
 
@@ -938,10 +938,9 @@ All examples above use find-by-IDs finders that take a single argument — the c
 ```java
 String title = "SENIOR_SOFTWARE_ENGINEER";
 teams = Populator.of(teams)
-    .populateMany(Team::getId, Member::getTeamId,
+    .populateMany(Team::getId, Member::getTeamId, Team::setMembers,
         // Pass title here
-        teamIds -> findMembersByTeamIdsAndTitle(teamIds, title),
-        Team::setMembers)
+        teamIds -> findMembersByTeamIdsAndTitle(teamIds, title))
     .run();
 ```
 
@@ -950,11 +949,10 @@ If using `PopulateParams`:
 ```java
 PopulateParams<Team, Member, Integer> paramsTeamWithMembers(
             String title, ChildModifier<Member> childModifier) {
-    return PopulateParams.ofMany(Team::getId, Member::getTeamId,
+    return PopulateParams.ofMany(Team::getId, Member::getTeamId, Team::setMembers,
             teamIds -> childModifier.modify(
                 findMembersByTeamIdsAndTitle(teamIds, title)
-            ),
-            Team::setMembers);
+            ));
 }
 ```
 

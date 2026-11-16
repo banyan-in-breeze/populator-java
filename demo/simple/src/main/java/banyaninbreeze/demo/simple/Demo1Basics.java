@@ -41,14 +41,14 @@ public class Demo1Basics {
                 .populateOne(  // for one-to-ONE association
                     Team::id,  // getter for the parent field used to match the child
                     Manager::teamId,  // getter for the child field used to match the parent
-                    this::findManagersByTeamIds,  // function that fetches child objects
-                    Team::withManager  // wither/setter that assigns the child and returns the updated parent object
+                    Team::withManager,  // wither/setter that assigns the child and returns the updated parent object
+                    this::findManagersByTeamIds  // function that fetches child objects
                 )
                 .populateMany(
                     Team::id,  // getter for the parent field used to match the child
                     Member::teamId,  // getter for the child field used to match the parent
-                    this::findMembersByTeamIds,  // function that fetches child objects
-                    Team::withMembers  // wither/setter that assigns the children and returns the updated parent object
+                    Team::withMembers,  // wither/setter that assigns the children and returns the updated parent object
+                    this::findMembersByTeamIds  // function that fetches child objects
                 )
                 .run();
 
@@ -69,15 +69,15 @@ public class Demo1Basics {
                         teams,  // parent list to be populated
                         Team::id,  // getter for the parent field used to match the child
                         Manager::teamId,  // getter for the child field used to match the parent
-                        this::findManagersByTeamIds,  // function that fetches child objects
-                        Team::withManager  // wither/setter that assigns the child and returns the updated parent object
+                        Team::withManager,  // wither/setter that assigns the child and returns the updated parent object
+                        this::findManagersByTeamIds  // function that fetches child objects
                     );
         teams = Populator.populateMany(  // for one-to-MANY association
                         teams,  // parent list to be populated
                         Team::id,  // getter for the parent field used to match the child
                         Member::teamId,  // getter for the child field used to match the parent
-                        this::findMembersByTeamIds,  // function that fetches child objects
-                        Team::withMembers  // wither/setter that assigns the children and returns the updated parent object
+                        Team::withMembers,  // wither/setter that assigns the children and returns the updated parent object
+                        this::findMembersByTeamIds  // function that fetches child objects
                     );
 
         printResult("Static population methods", teams);
@@ -97,8 +97,8 @@ public class Demo1Basics {
             PopulateParams.ofOne(  // for one-to-ONE association
                 Team::id,  // getter for the parent field used to match the child
                 Manager::teamId,  // getter for the child field used to match the parent
-                this::findManagersByTeamIds,  // function that fetches child objects
-                Team::withManager  // wither/setter that assigns the child and returns the updated parent object
+                Team::withManager,  // wither/setter that assigns the child and returns the updated parent object
+                this::findManagersByTeamIds  // function that fetches child objects
             );
 
         List<Team> teams = findAllTeams();
@@ -114,8 +114,8 @@ public class Demo1Basics {
         return PopulateParams.ofMany(  // for one-to-MANY association
                     Team::id,  // getter for the parent field used to match the child
                     Member::teamId,  // getter for the child field used to match the parent
-                    this::findMembersByTeamIds,  // function that fetches child objects
-                    Team::withMembers  // wither/setter that assigns the children and returns the updated parent object
+                    Team::withMembers,  // wither/setter that assigns the children and returns the updated parent object
+                    this::findMembersByTeamIds  // function that fetches child objects
             );
     }
     
@@ -136,8 +136,8 @@ public class Demo1Basics {
             PopulateParams.<Team, Manager, Integer>ofOne( // <-- specify type arguments
                 Team::id,
                 Manager::teamId,
-                this::findManagersByTeamIds,
-                Team::withManager
+                Team::withManager,
+                this::findManagersByTeamIds
             );
 
         teams = Populator.of(teams)
@@ -147,8 +147,8 @@ public class Demo1Basics {
                 teams,
                 Team::id,
                 Member::teamId,
-                this::findMembersByTeamIds,
-                Team::withMembers
+                Team::withMembers,
+                this::findMembersByTeamIds
             );
 
         printResult("Good practice: specify type arguments", teams);
@@ -167,9 +167,9 @@ public class Demo1Basics {
                 teams,
                 Team::id,
                 Member::teamId,
-                // this::findMembersByTeamIdList,  // <-- Doesn't work. findMembersByTeamIdList() doesn't accept Collection<>
-                teamIds -> this.findMembersByTeamIdList(List.copyOf(teamIds)), // Convert the Collection to List
-                Team::withMembers
+                Team::withMembers,
+                // this::findMembersByTeamIdList  // <-- Doesn't work. findMembersByTeamIdList() doesn't accept Collection<>
+                teamIds -> this.findMembersByTeamIdList(List.copyOf(teamIds)) // Convert the Collection to List
             );
 
         printResult("Adapt the parameter type of the childFinder function", teams);

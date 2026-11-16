@@ -33,97 +33,94 @@ public class BookstorePopulateParamsCreator {
         return PopulateParams.<Book, BookAuthor, String>ofMany(
                 Book::getId,
                 BookAuthor::getBookId,
-                bookIds -> childModifier.modify(bookstoreRepo.findBookAuthorsByBookIds(bookIds)),
-                Book::setBookAuthors);
+                Book::setBookAuthors,
+                bookIds -> childModifier.modify(bookstoreRepo.findBookAuthorsByBookIds(bookIds)));
     }
 
     public PopulateParams<Book, BookSubject, String> bookWithBookSubjects(ChildModifier<BookSubject> childModifier) {
         return PopulateParams.<Book, BookSubject, String>ofMany(
                 Book::getId,
                 BookSubject::getBookId,
-                bookIds -> childModifier.modify(bookstoreRepo.findBookSubjectsByBookIds(bookIds)),
-                Book::setBookSubjects);
+                Book::setBookSubjects,
+                bookIds -> childModifier.modify(bookstoreRepo.findBookSubjectsByBookIds(bookIds)));
     }
 
     public PopulateParams<Book, BookUserRating, String> bookWithUserRatings() {
         return PopulateParams.<Book, BookUserRating, String>ofMany(
-                Book::getIsbn,
-                BookUserRating::isbn,
-                userRatingClient::findUserRatingsByIsbns,
-                Book::setUserRatings);
+                Book::getIsbn, BookUserRating::isbn, Book::setUserRatings,
+                userRatingClient::findUserRatingsByIsbns);
     }
 
     public PopulateParams<Book, BookDetails, String> bookWithBookDetails() {
         return PopulateParams.<Book, BookDetails, String>ofOne(
                 Book::getId,
                 BookDetails::getBookId,
-                bookstoreRepo::findBookDetailsByBookIds,
-                Book::setDetails);
+                Book::setDetails,
+                bookstoreRepo::findBookDetailsByBookIds);
     }
 
     public PopulateParams<Subject, BookSubject, String> subjectWithBookSubjects(ChildModifier<BookSubject> childModifier) {
         return PopulateParams.<Subject, BookSubject, String>ofMany(
                 Subject::getId,
                 BookSubject::getSubjectId,
-                subjectIds -> childModifier.modify(bookstoreRepo.findBookSubjectsBySubjectIds(subjectIds)),
-                Subject::setBookSubjects);
+                Subject::setBookSubjects,
+                subjectIds -> childModifier.modify(bookstoreRepo.findBookSubjectsBySubjectIds(subjectIds)));
     }
 
     public PopulateParams<Subject, SubjectAuthor, String> subjectWithSubjectAuthor(ChildModifier<SubjectAuthor> childModifier) {
         return PopulateParams.<Subject, SubjectAuthor, String>ofMany(
             Subject::getId,
             SubjectAuthor::getSubjectId,
-            subjectIds -> childModifier.modify(bookstoreRepo.findSubjectAuthorsBySubjectIds(subjectIds)),
-            Subject::setSubjectAuthors
-        );
+            Subject::setSubjectAuthors,
+            subjectIds -> childModifier.modify(bookstoreRepo.findSubjectAuthorsBySubjectIds(subjectIds)));
     }
 
     public PopulateParams<Author, BookAuthor, String> authorWithBookAuthor(ChildModifier<BookAuthor> childModifier) {
         return PopulateParams.<Author, BookAuthor, String>ofMany(
                 Author::getId,
                 BookAuthor::getAuthorId,
-                authorIds -> childModifier.modify(bookstoreRepo.findBookAuthorsByAuthorIds(authorIds)),
-                Author::setBookAuthors);
+                Author::setBookAuthors,
+                authorIds -> childModifier.modify(bookstoreRepo.findBookAuthorsByAuthorIds(authorIds)));
     }
 
     public PopulateParams<BookAuthor, Author, String> bookAuthorWithAuthor(ChildModifier<Author> childModifier) {
         return PopulateParams.<BookAuthor, Author, String>ofOne(
                 BookAuthor::getAuthorId,
                 Author::getId,
-                authorIds -> childModifier.modify(bookstoreRepo.findAuthorsByIds(authorIds)),
-                BookAuthor::setAuthor);
+                BookAuthor::setAuthor,
+                authorIds -> childModifier.modify(bookstoreRepo.findAuthorsByIds(authorIds)));
     }
 
     public PopulateParams<BookAuthor, Book, String> bookAuthorWithBook(ChildModifier<Book> childModifier) {
         return PopulateParams.<BookAuthor, Book, String>ofOne(
                 BookAuthor::getBookId,
                 Book::getId,
-                bookIds -> childModifier.modify(bookstoreRepo.findBooksByIds(bookIds)),
-                BookAuthor::setBook);
+                BookAuthor::setBook,
+                bookIds -> childModifier.modify(bookstoreRepo.findBooksByIds(bookIds)));
     }
 
     public PopulateParams<BookSubject, Subject, String> bookSubjectWithSubject() {
         return PopulateParams.<BookSubject, Subject, String>ofOne(
                 BookSubject::getSubjectId,
                 Subject::getId,
-                bookstoreRepo::findSubjectsByIds,
-                BookSubject::setSubject);
+                BookSubject::setSubject,
+                bookstoreRepo::findSubjectsByIds);
     }
 
     public PopulateParams<BookSubject, Book, String> bookSubjectWithBook(ChildModifier<Book> childModifier) {
         return PopulateParams.<BookSubject, Book, String>ofOne(
                 BookSubject::getBookId,
                 Book::getId,
-                bookIds -> childModifier.modify(bookstoreRepo.findBooksByIds(bookIds)),
-                BookSubject::setBook);
+                BookSubject::setBook,
+                bookIds -> childModifier.modify(bookstoreRepo.findBooksByIds(bookIds)));
     }
 
     public PopulateParams<SubjectAuthor, Author, String> subjectAuthorWithAuthor() {
         return PopulateParams.<SubjectAuthor, Author, String>ofOne(
             SubjectAuthor::getAuthorId,
             Author::getId,
-            bookstoreRepo::findAuthorsByIds,
-            SubjectAuthor::setAuthor
+            SubjectAuthor::setAuthor,
+            bookstoreRepo::findAuthorsByIds
         );
     }
 
@@ -131,10 +128,7 @@ public class BookstorePopulateParamsCreator {
         return PopulateParams.<Subject, SubjectBookCount, String>ofOne(
             Subject::getId,
             SubjectBookCount::getSubjectId,
-            bookstoreRepo::findSubjectBookCountsBySubjectIds,
-            Subject::setSubjectBookCount
-        );
+            Subject::setSubjectBookCount,
+            bookstoreRepo::findSubjectBookCountsBySubjectIds);
     }
-
 }
-

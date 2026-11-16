@@ -86,19 +86,19 @@ public class Populator<P> {
      * @param parents              The collection of parent objects to populate.
      * @param parentIdGetter       Lambda method reference to read the unique join key from the Parent.
      * @param childIdGetter        Lambda method reference to read the unique join key from the fetched Child.
-     * @param childFinder          Lambda function that batch-fetches a Collection of Children using a Collection of unique keys.
      * @param parentOneChildSetter Lambda function to map and save a single Child reference back onto its matching Parent.
+     * @param childFinder          Lambda function that batch-fetches a Collection of Children using a Collection of unique keys.
      * @return An unmodifiable List of successfully processed and populated Parent objects.
      */
     public static <P, C, ID> List<P> populateOne(
             Collection<P> parents,
             Function<P, ID> parentIdGetter,
             Function<C, ID> childIdGetter,
-            Function<Collection<ID>, Collection<C>> childFinder,
-            BiFunction<P, C, P> parentOneChildSetter
+            BiFunction<P, C, P> parentOneChildSetter,
+            Function<Collection<ID>, Collection<C>> childFinder
     ) {
         return Populator.of(parents)
-                .populateOne(parentIdGetter, childIdGetter, childFinder, parentOneChildSetter)
+                .populateOne(parentIdGetter, childIdGetter, parentOneChildSetter, childFinder)
                 .run();
     }
     
@@ -112,19 +112,19 @@ public class Populator<P> {
      * @param parents               The collection of parent objects to populate.
      * @param parentIdGetter        Lambda method reference to read the unique join key from the Parent.
      * @param childIdGetter         Lambda method reference to read the unique join key from the fetched Child.
-     * @param childFinder           Lambda function that batch-fetches a Collection of Children using a Collection of unique keys.
      * @param parentManyChildSetter Lambda function to map and save a List of Children back onto their matching Parent.
+     * @param childFinder           Lambda function that batch-fetches a Collection of Children using a Collection of unique keys.
      * @return An unmodifiable List of successfully processed and populated Parent objects.
      */
     public static <P, C, ID> List<P> populateMany(
             Collection<P> parents,
             Function<P, ID> parentIdGetter,
             Function<C, ID> childIdGetter,
-            Function<Collection<ID>, Collection<C>> childFinder,
-            BiFunction<P, List<C>, P> parentManyChildSetter
+            BiFunction<P, List<C>, P> parentManyChildSetter,
+            Function<Collection<ID>, Collection<C>> childFinder
     ) {
         return Populator.of(parents)
-                .populateMany(parentIdGetter, childIdGetter, childFinder, parentManyChildSetter)
+                .populateMany(parentIdGetter, childIdGetter, parentManyChildSetter, childFinder)
                 .run();
     }
     
@@ -263,10 +263,10 @@ public class Populator<P> {
     public <C, ID> Populator<P> populateOne(
             Function<P, ID> parentIdGetter,
             Function<C, ID> childIdGetter,
-            Function<Collection<ID>, Collection<C>> childFinder,
-            BiFunction<P, C, P> parentOneChildSetter
+            BiFunction<P, C, P> parentOneChildSetter,
+            Function<Collection<ID>, Collection<C>> childFinder
     ) {
-        return this.populate(PopulateParams.ofOne(parentIdGetter, childIdGetter, childFinder, parentOneChildSetter));
+        return this.populate(PopulateParams.ofOne(parentIdGetter, childIdGetter, parentOneChildSetter, childFinder));
     }
     
     /**
@@ -283,10 +283,10 @@ public class Populator<P> {
     public <C, ID> Populator<P> populateMany(
             Function<P, ID> parentIdGetter,
             Function<C, ID> childIdGetter,
-            Function<Collection<ID>, Collection<C>> childFinder,
-            BiFunction<P, List<C>, P> parentManyChildSetter
+            BiFunction<P, List<C>, P> parentManyChildSetter,
+            Function<Collection<ID>, Collection<C>> childFinder
     ) {
-        return this.populate(PopulateParams.ofMany(parentIdGetter, childIdGetter, childFinder, parentManyChildSetter));
+        return this.populate(PopulateParams.ofMany(parentIdGetter, childIdGetter, parentManyChildSetter, childFinder));
     }
     
     /**
@@ -391,22 +391,22 @@ public class Populator<P> {
     public static class PopulateParams<P, C, ID> {
         private final Function<P, ID> parentIdGetter;
         private final Function<C, ID> childIdGetter;
-        private final Function<Collection<ID>, Collection<C>> childFinder;
         private final BiFunction<P, C, P> parentOneChildSetter;
         private final BiFunction<P, List<C>, P> parentManyChildSetter;
+        private final Function<Collection<ID>, Collection<C>> childFinder;
         
         private PopulateParams(
                 Function<P, ID> parentIdGetter,
                 Function<C, ID> childIdGetter,
-                Function<Collection<ID>, Collection<C>> childFinder,
                 BiFunction<P, C, P> parentOneChildSetter,
-                BiFunction<P, List<C>, P> parentManyChildSetter
+                BiFunction<P, List<C>, P> parentManyChildSetter,
+                Function<Collection<ID>, Collection<C>> childFinder
         ) {
             this.parentIdGetter = parentIdGetter;
             this.childIdGetter = childIdGetter;
-            this.childFinder = childFinder;
             this.parentOneChildSetter = parentOneChildSetter;
             this.parentManyChildSetter = parentManyChildSetter;
+            this.childFinder = childFinder;
         }
         
         /**
@@ -417,17 +417,17 @@ public class Populator<P> {
          * @param <ID>                 The unique identifier key type.
          * @param parentIdGetter       Lambda method reference to read the unique join key from the Parent.
          * @param childIdGetter        Lambda method reference to read the unique join key from the fetched Child.
-         * @param childFinder          Lambda function that batch-fetches a Collection of Children using a Collection of unique keys.
          * @param parentOneChildSetter Lambda function to map and save a single Child reference back onto its matching Parent.
+         * @param childFinder          Lambda function that batch-fetches a Collection of Children using a Collection of unique keys.
          * @return An initialized, immutable PopulateParams configuration rule rule wrapper.
          */
         public static <P, C, ID> PopulateParams<P, C, ID> ofOne(
                 Function<P, ID> parentIdGetter,
                 Function<C, ID> childIdGetter,
-                Function<Collection<ID>, Collection<C>> childFinder,
-                BiFunction<P, C, P> parentOneChildSetter
+                BiFunction<P, C, P> parentOneChildSetter,
+                Function<Collection<ID>, Collection<C>> childFinder
         ) {
-            return new PopulateParams<P, C, ID>(parentIdGetter, childIdGetter, childFinder, parentOneChildSetter, null);
+            return new PopulateParams<P, C, ID>(parentIdGetter, childIdGetter, parentOneChildSetter, null, childFinder);
         }
         
         /**
@@ -438,17 +438,17 @@ public class Populator<P> {
          * @param <ID>                  The unique identifier key type.
          * @param parentIdGetter        Lambda method reference to read the unique join key from the Parent.
          * @param childIdGetter         Lambda method reference to read the unique join key from the fetched Child.
-         * @param childFinder           Lambda function that batch-fetches a Collection of Children using a Collection of unique keys.
          * @param parentManyChildSetter Lambda function to map and save a List of Children back onto their matching Parent.
+         * @param childFinder           Lambda function that batch-fetches a Collection of Children using a Collection of unique keys.
          * @return An initialized, immutable PopulateParams configuration rule rule wrapper.
          */
         public static <P, C, ID> PopulateParams<P, C, ID> ofMany(
                 Function<P, ID> parentIdGetter,
                 Function<C, ID> childIdGetter,
-                Function<Collection<ID>, Collection<C>> childFinder,
-                BiFunction<P, List<C>, P> parentManyChildSetter
+                BiFunction<P, List<C>, P> parentManyChildSetter,
+                Function<Collection<ID>, Collection<C>> childFinder
         ) {
-            return new PopulateParams<P, C, ID>(parentIdGetter, childIdGetter, childFinder, null, parentManyChildSetter);
+            return new PopulateParams<P, C, ID>(parentIdGetter, childIdGetter, null, parentManyChildSetter, childFinder);
         }
 
         public Function<P, ID> getParentIdGetter() {
@@ -459,16 +459,16 @@ public class Populator<P> {
             return childIdGetter;
         }
 
-        public Function<Collection<ID>, Collection<C>> getChildFinder() {
-            return childFinder;
-        }
-
         public BiFunction<P, C, P> getParentOneChildSetter() {
             return parentOneChildSetter;
         }
 
         public BiFunction<P, List<C>, P> getParentManyChildSetter() {
             return parentManyChildSetter;
+        }
+
+        public Function<Collection<ID>, Collection<C>> getChildFinder() {
+            return childFinder;
         }
     }
     

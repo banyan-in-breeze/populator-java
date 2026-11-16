@@ -44,8 +44,8 @@ public class Demo5ManyToMany {
         return PopulateParams.<Team, TeamMember, Integer>ofMany(
                     Team::id,
                     TeamMember::teamId,
-                    teamIds -> childModifier.modify(findTeamMembersByTeamIds(teamIds)),
-                    Team::withTeamMembers
+                    Team::withTeamMembers,
+                    teamIds -> childModifier.modify(findTeamMembersByTeamIds(teamIds))
             );
     }
 
@@ -53,8 +53,8 @@ public class Demo5ManyToMany {
         return PopulateParams.<TeamMember, Member, Integer>ofOne(
                     TeamMember::memberId,
                     Member::id,
-                    this::findMembersByIds,
-                    TeamMember::withMember
+                    TeamMember::withMember,
+                    this::findMembersByIds
             );
     }
 

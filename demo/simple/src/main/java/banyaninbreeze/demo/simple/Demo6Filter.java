@@ -57,8 +57,8 @@ public class Demo6Filter {
         return PopulateParams.<Team, Member, Integer>ofMany(
                     Team::id,
                     Member::teamId,
-                    teamIds -> findMembersByTeamIds(teamIds, availableFlags),
-                    Team::withMembers
+                    Team::withMembers,
+                    teamIds -> findMembersByTeamIds(teamIds, availableFlags)
             );
     }
 

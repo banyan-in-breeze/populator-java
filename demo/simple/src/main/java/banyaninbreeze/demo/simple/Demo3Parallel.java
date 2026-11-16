@@ -165,8 +165,8 @@ public class Demo3Parallel {
         return PopulateParams.<Team, Manager, Integer>ofOne(
                     Team::id,
                     Manager::teamId,
-                    this::findManagersByTeamIds,
-                    Team::withManager
+                    Team::withManager,
+                    this::findManagersByTeamIds
                 );
     }
 
@@ -175,8 +175,8 @@ public class Demo3Parallel {
         return PopulateParams.<Team, Member, Integer>ofMany(
                     Team::id,
                     Member::teamId,
-                    teamIds -> childModifier.modify(this.findMembersByTeamIds(teamIds)),
-                    Team::withMembers
+                    Team::withMembers,
+                    teamIds -> childModifier.modify(this.findMembersByTeamIds(teamIds))
                 );
     }
 
@@ -185,8 +185,8 @@ public class Demo3Parallel {
         return PopulateParams.<Member, Title, Integer>ofOne(
                     Member::titleId,
                     Title::id,
-                    this::findTitlesByIds,
-                    Member::withTitle
+                    Member::withTitle,
+                    this::findTitlesByIds
                 );
     }
 
@@ -195,8 +195,8 @@ public class Demo3Parallel {
         return PopulateParams.<Member, ContactMethod, String>ofMany(
                     Member::employeeId,
                     ContactMethod::employeeId,
-                    this::findContactMethodsByEmployeeIds,
-                    Member::withContactMethods
+                    Member::withContactMethods,
+                    this::findContactMethodsByEmployeeIds
                 );
     }
 

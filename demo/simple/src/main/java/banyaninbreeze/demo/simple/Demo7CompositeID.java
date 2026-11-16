@@ -35,8 +35,8 @@ public class Demo7CompositeID {
                         teams,
                         team -> new CompositeID(team.departmentId(), team.sequence()),
                         member -> new CompositeID(member.departmentId(), member.sequence()),
-                        this::findMembersByCompositeIds,
-                        Team::withMembers
+                        Team::withMembers,
+                        this::findMembersByCompositeIds
                     );
 
         printResult("Static populating methods", teams);
